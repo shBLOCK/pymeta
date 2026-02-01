@@ -36,6 +36,10 @@ impl PyLine {
     fn append(&mut self, segment: PySegment) {
         self.segments.push(segment);
     }
+
+    fn is_empty(&self) -> bool {
+        self.segments.is_empty()
+    }
 }
 
 pub(crate) struct PySource {
@@ -60,6 +64,9 @@ impl PySource {
 
     pub fn indent_all(&mut self, n: i16) {
         for line in &mut self.lines {
+            if line.is_empty() {
+                continue;
+            }
             line.indent = (line.indent as i32 + n as i32)
                 .try_into()
                 .unwrap_or_else(|_| panic!("Indent overflow, adding {n} to {}.", line.indent));
@@ -67,7 +74,13 @@ impl PySource {
     }
 
     pub fn strip_common_indent(&mut self) {
-        let Some(min) = self.lines.iter().map(|line| line.indent).min() else {
+        let Some(min) = self
+            .lines
+            .iter()
+            .filter(|line| !line.is_empty())
+            .map(|line| line.indent)
+            .min()
+        else {
             return;
         };
         self.indent_all(-(min as i16));
@@ -114,7 +127,11 @@ impl PySourceBuilder {
     }
 
     pub fn finish(mut self) -> PySource {
-        assert_eq!(self.indent_block_stack.len(), 1, "push_indent / pop_indent mismatch.");
+        assert_eq!(
+            self.indent_block_stack.len(),
+            1,
+            "push_indent / pop_indent mismatch."
+        );
         self.indent_block_stack.pop().unwrap()
     }
 }
