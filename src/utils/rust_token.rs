@@ -156,6 +156,7 @@ delegate_token_struct_common!(Literal, literal);
 /// Extended version of [TokenTree].
 ///
 /// Most notably, adding the semi-tokens [Self::NewLine] and [Self::Spaces].
+#[derive(Clone)]
 pub(crate) enum Token {
     Ident(Rc<Ident>),
     Punct(Rc<Punct>),
