@@ -120,7 +120,7 @@ impl PySourceBuilder {
         let top = self.indent_block_stack.last_mut().unwrap();
 
         block.strip_common_indent();
-        let prev_line_indent = top.lines.last().map(|line| line.indent).unwrap_or(0);
+        let prev_line_indent = top.lines.last().map_or(0, |line| line.indent);
         block.indent_all(prev_line_indent as i16 + INDENT_SIZE as i16);
 
         top.lines.extend(block.lines);

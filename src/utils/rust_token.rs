@@ -1,4 +1,4 @@
-use proc_macro2::{LineColumn, Span, TokenTree};
+use proc_macro2::{Delimiter, LineColumn, Span, TokenTree};
 use std::cell::OnceCell;
 use std::fmt::{Debug, Formatter};
 use std::ops::Range;
@@ -15,7 +15,7 @@ pub(crate) struct CSpan {
 }
 
 impl CSpan {
-    pub fn span(&self) -> Span {
+    pub fn inner(&self) -> Span {
         self.span
     }
 
@@ -83,7 +83,7 @@ impl Group {
         TokenBuffer::from(&self.tokens)
     }
 
-    pub fn delimiter(&self) -> proc_macro2::Delimiter {
+    pub fn delimiter(&self) -> Delimiter {
         self.group.delimiter()
     }
 }
@@ -114,7 +114,7 @@ impl Debug for Group {
     }
 }
 
-macro_rules! impl_token_struct_span {
+macro_rules! impl_token_struct_common {
     ($struct_name:ident, $inner_name:ident) => {
         impl $struct_name {
             pub fn span(&self) -> Rc<CSpan> {
@@ -123,13 +123,17 @@ macro_rules! impl_token_struct_span {
                         .get_or_init(|| Rc::new(CSpan::from(self.$inner_name.span()))),
                 )
             }
+            
+            pub fn inner(&self) -> &proc_macro2::$struct_name {
+                &self.$inner_name
+            }
         }
     };
 }
-impl_token_struct_span!(Ident, ident);
-impl_token_struct_span!(Punct, punct);
-impl_token_struct_span!(Literal, literal);
-impl_token_struct_span!(Group, group);
+impl_token_struct_common!(Ident, ident);
+impl_token_struct_common!(Punct, punct);
+impl_token_struct_common!(Literal, literal);
+impl_token_struct_common!(Group, group);
 
 macro_rules! delegate_token_struct_common {
     ($struct_name:ident, $inner_name:ident) => {
@@ -193,9 +197,51 @@ impl Token {
     token_get_token_struct_fn!(Literal, literal);
     token_get_token_struct_fn!(Group, group);
 
+    pub fn newline(&self) -> Option<LineColumn> {
+        match self {
+            Self::NewLine(lc) => Some(*lc),
+            _ => None,
+        }
+    }
+
+    pub fn is_newline(&self) -> bool {
+        match self {
+            Self::NewLine(_) => true,
+            _ => false,
+        }
+    }
+
+    pub fn spaces(&self) -> Option<u16> {
+        match self {
+            Self::Spaces(s) => Some(*s),
+            _ => None,
+        }
+    }
+
+    pub fn is_spaces(&self) -> bool {
+        match self {
+            Self::Spaces(_) => true,
+            _ => false,
+        }
+    }
+
+    pub fn is_whitespace(&self) -> bool {
+        match self {
+            Self::Spaces(_) | Self::NewLine(_) => true,
+            _ => false,
+        }
+    }
+
     pub fn eq_punct(&self, ch: char) -> bool {
         match self {
             Self::Punct(punct) => punct.punct.as_char() == ch,
+            _ => false,
+        }
+    }
+    
+    pub fn eq_group(&self, delimiter: Delimiter) -> bool {
+        match self {
+            Self::Group(group) => group.group.delimiter() == delimiter,
             _ => false,
         }
     }
@@ -285,21 +331,44 @@ impl TokenBuffer {
     pub fn reset(&mut self) {
         self.pos = 0;
     }
+    
+    pub fn read_one(&mut self) -> Option<&Token> {
+        self.current()?;
+        self.pos += 1;
+        Some(self.peek(-1).unwrap())
+    }
 
-    pub fn seek(&mut self, offset: isize) -> Option<&Token> {
-        if !(0..self.tokens.len() as isize).contains(&(self.pos as isize + offset)) {
+    pub fn seek(&mut self, offset: isize) -> Option<&mut Self> {
+        if !(0..=self.tokens.len() as isize).contains(&(self.pos as isize + offset)) {
             return None;
         }
         self.pos = (self.pos as isize + offset) as usize;
-        Some(&self.tokens[self.pos])
+        Some(self)
     }
 
-    pub fn current(&self) -> &Token {
-        &self.tokens[self.pos]
+    pub fn seeked(&self, offset: isize) -> Option<Self> {
+        let mut tokens = self.clone();
+        tokens.seek(offset)?;
+        Some(tokens)
+    }
+    
+    pub fn seek_to_end_of_line(&mut self) -> &mut Self {
+        while !self.peek(1).map_or(true, |t| t.is_newline()) {
+            self.pos += 1;
+        }
+        self
+    }
+
+    pub fn current(&self) -> Option<&Token> {
+        self.tokens.get(self.pos)
     }
 
     pub fn peek(&self, offset: isize) -> Option<&Token> {
         self.tokens.get(self.pos.checked_add_signed(offset)?)
+    }
+    
+    pub fn have_n_more(&self, n: usize) -> bool {
+        self.pos + n <= self.tokens.len()
     }
 
     pub fn pos(&self) -> usize {
@@ -312,6 +381,24 @@ impl TokenBuffer {
 
     pub fn iter(&self) -> core::slice::Iter<Token> {
         self.tokens.iter()
+    }
+    
+    /// Find the "closest" span that makes sense for diagnostics purposes.
+    /// 
+    /// This is for use in contexts like "error occurred near here".
+    pub fn get_current_span_for_diagnostics(&self) -> Span {
+        if let Some(span) = self.current().and_then(Token::span) {
+            return span.inner();
+        }
+        for search_direction in [1, -1] {
+            for i in 1.. {
+                let Some(token) = self.peek(i * search_direction) else { break };
+                if let Some(span) = token.span() {
+                    return span.inner();
+                }
+            }
+        }
+        Span::call_site()
     }
 }
 
