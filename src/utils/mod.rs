@@ -1,2 +1,28 @@
+use proc_macro2::Span;
+
 pub(crate) mod rust_token;
 pub(crate) mod py_source;
+pub(crate) mod logging;
+
+pub(crate) trait SpanOptionEx {
+    fn join_or_fallback(self, other: Self) -> Span;
+}
+impl SpanOptionEx for Option<Span> {
+    fn join_or_fallback(self, other: Self) -> Span {
+        match (self, other) {
+            (Some(lhs), Some(rhs)) => lhs.join(rhs).unwrap_or_else(Span::call_site),
+            (Some(lhs), None) => lhs,
+            (None, Some(rhs)) => rhs,
+            (None, None) => Span::call_site(),
+        }
+    }
+}
+
+pub(crate) trait SpanEx {
+    fn join_or_fallback(self, other: Option<Span>) -> Span;
+}
+impl SpanEx for Span {
+    fn join_or_fallback(self, other: Option<Span>) -> Span {
+        Some(self).join_or_fallback(other)
+    }
+}

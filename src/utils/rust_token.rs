@@ -1,7 +1,6 @@
 use proc_macro2::{Delimiter, LineColumn, Span, TokenTree};
 use std::cell::OnceCell;
 use std::fmt::{Debug, Formatter};
-use std::ops::Range;
 use std::rc::Rc;
 
 /// Caching wrapper around [Span].
@@ -9,7 +8,6 @@ use std::rc::Rc;
 /// [Span] operations can be expansive, see: https://github.com/rust-lang/rust/issues/149331#issuecomment-3580649306
 pub(crate) struct CSpan {
     span: Span,
-    _byte_range: OnceCell<Range<usize>>,
     _start: OnceCell<LineColumn>,
     _end: OnceCell<LineColumn>,
 }
@@ -17,12 +15,6 @@ pub(crate) struct CSpan {
 impl CSpan {
     pub fn inner(&self) -> Span {
         self.span
-    }
-
-    pub fn byte_range(&self) -> Range<usize> {
-        self._byte_range
-            .get_or_init(|| self.span.byte_range())
-            .clone()
     }
 
     pub fn start(&self) -> LineColumn {
@@ -38,7 +30,6 @@ impl From<Span> for CSpan {
     fn from(value: Span) -> Self {
         Self {
             span: value,
-            _byte_range: OnceCell::new(),
             _start: OnceCell::new(),
             _end: OnceCell::new(),
         }
@@ -123,7 +114,8 @@ macro_rules! impl_token_struct_common {
                         .get_or_init(|| Rc::new(CSpan::from(self.$inner_name.span()))),
                 )
             }
-            
+
+            #[allow(unused)]
             pub fn inner(&self) -> &proc_macro2::$struct_name {
                 &self.$inner_name
             }
@@ -172,6 +164,7 @@ pub(crate) enum Token {
 
 macro_rules! token_get_token_struct_fn {
     ($name:ident, $fn_name:ident) => {
+        #[allow(unused)]
         pub fn $fn_name(&self) -> Option<Rc<$name>> {
             match self {
                 Self::$name(it) => Some(Rc::clone(it)),
@@ -339,10 +332,11 @@ impl TokenBuffer {
     }
 
     pub fn seek(&mut self, offset: isize) -> Option<&mut Self> {
-        if !(0..=self.tokens.len() as isize).contains(&(self.pos as isize + offset)) {
+        let target = self.pos as isize + offset;
+        if !(0..=self.tokens.len() as isize).contains(&target) {
             return None;
         }
-        self.pos = (self.pos as isize + offset) as usize;
+        self.pos = target as usize;
         Some(self)
     }
 
@@ -379,7 +373,7 @@ impl TokenBuffer {
         self.pos >= self.tokens.len()
     }
 
-    pub fn iter(&self) -> core::slice::Iter<Token> {
+    pub fn iter(&self) -> core::slice::Iter<'_, Token> {
         self.tokens.iter()
     }
     
