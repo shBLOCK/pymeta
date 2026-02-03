@@ -5,23 +5,13 @@ from typing import SupportsInt, SupportsFloat, final, Collection, Final, Support
 
 
 @final
-class Span:
-    # TODO
-
-    @classmethod
-    def def_size(cls) -> Span:
-        return Span()  # TODO
-
+class Span: # TODO: make this a Rust native class
     @classmethod
     def call_site(cls) -> Span:
         return Span()  # TODO
 
-    @classmethod
-    def mixed_site(cls) -> Span:
-        return Span()  # TODO
-
     def __repr__(self):
-        return f"{self.__class__.__name__}()"  # TODO
+        return f"{self.__class__.__name__}(TODO)"  # TODO
 
 
 class Token(ABC):

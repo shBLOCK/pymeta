@@ -1,13 +1,43 @@
 use super::PY_MARKER;
-use crate::utils::rust_token::{Punct, Token, TokenBuffer};
+use crate::utils::rust_token::{CSpan, Punct, Token, TokenBuffer};
 use proc_macro2::Delimiter;
+use std::rc::Rc;
 
 pub(crate) trait PunctEx {
     fn is_py_marker(&self) -> bool;
+    fn as_str(&self) -> &'static str;
 }
 impl PunctEx for Punct {
     fn is_py_marker(&self) -> bool {
         self.inner().as_char() == PY_MARKER
+    }
+
+    fn as_str(&self) -> &'static str {
+        match self.inner().as_char() {
+            '!' => "!",
+            '#' => "#",
+            '$' => "$",
+            '%' => "%",
+            '&' => "&",
+            '\'' => "'",
+            '*' => "*",
+            '+' => "+",
+            ',' => ",",
+            '-' => "-",
+            '.' => ".",
+            '/' => "/",
+            ':' => ":",
+            ';' => ";",
+            '<' => "<",
+            '=' => "=",
+            '>' => ">",
+            '?' => "?",
+            '@' => "@",
+            '^' => "^",
+            '|' => "|",
+            '~' => "~",
+            _ => unreachable!(),
+        }
     }
 }
 
@@ -62,6 +92,8 @@ impl TokenOptionEx for Option<&Token> {
 pub(super) trait TokenBufferEx {
     fn is_current_py_marker_escaped(&self) -> bool;
     fn is_py_marker_escape(&self) -> bool;
+    fn py_marker_escape_span(&self) -> Rc<CSpan>;
+    fn skip_py_marker_escape(&mut self);
     fn is_py_marker_start(&self) -> bool;
     fn is_py_marker_end(&self) -> bool;
     fn is_indent_block(&self) -> bool;
@@ -76,15 +108,87 @@ impl TokenBufferEx for TokenBuffer {
         self.peek(1).is_py_marker() && self.seeked(1).unwrap().is_current_py_marker_escaped()
     }
 
+    fn py_marker_escape_span(&self) -> Rc<CSpan> {
+        let start = self.current().unwrap().span().unwrap();
+        let end = self.peek(2).unwrap().span().unwrap();
+        start
+            .inner()
+            .join(end.inner())
+            .map(|s| Rc::new(CSpan::from(s)))
+            .unwrap_or(start)
+    }
+
+    fn skip_py_marker_escape(&mut self) {
+        self.seek(3).unwrap();
+    }
+
     fn is_py_marker_start(&self) -> bool {
-        self.current().is_py_marker() && !self.peek(1).is_whitespace() && !self.is_current_py_marker_escaped()
+        self.current().is_py_marker()
+            && !self.peek(1).is_whitespace()
+            && !self.is_current_py_marker_escaped()
     }
 
     fn is_py_marker_end(&self) -> bool {
-        self.current().is_py_marker() && !self.peek(-1).is_whitespace() && !self.is_current_py_marker_escaped()
+        self.current().is_py_marker()
+            && !self.peek(-1).is_whitespace()
+            && !self.is_current_py_marker_escaped()
     }
 
     fn is_indent_block(&self) -> bool {
         self.current().eq_punct(':') && self.peek(1).eq_group(Delimiter::Brace)
+    }
+}
+
+pub(super) trait DelimiterEx {
+    fn left_char(self) -> Option<char>;
+    fn right_char(self) -> Option<char>;
+    fn left_str(self) -> Option<&'static str>;
+    fn right_str(self) -> Option<&'static str>;
+    fn left_right_str(self) -> Option<&'static str>;
+}
+impl DelimiterEx for Delimiter {
+    fn left_char(self) -> Option<char> {
+        match self {
+            Delimiter::Parenthesis => Some('('),
+            Delimiter::Brace => Some('{'),
+            Delimiter::Bracket => Some('['),
+            Delimiter::None => None,
+        }
+    }
+
+    fn right_char(self) -> Option<char> {
+        match self {
+            Delimiter::Parenthesis => Some(')'),
+            Delimiter::Brace => Some('}'),
+            Delimiter::Bracket => Some(']'),
+            Delimiter::None => None,
+        }
+    }
+
+    fn left_str(self) -> Option<&'static str> {
+        match self {
+            Delimiter::Parenthesis => Some("("),
+            Delimiter::Brace => Some("{"),
+            Delimiter::Bracket => Some("["),
+            Delimiter::None => None,
+        }
+    }
+
+    fn right_str(self) -> Option<&'static str> {
+        match self {
+            Delimiter::Parenthesis => Some(")"),
+            Delimiter::Brace => Some("}"),
+            Delimiter::Bracket => Some("]"),
+            Delimiter::None => None,
+        }
+    }
+
+    fn left_right_str(self) -> Option<&'static str> {
+        match self {
+            Delimiter::Parenthesis => Some("()"),
+            Delimiter::Brace => Some("{}"),
+            Delimiter::Bracket => Some("[]"),
+            Delimiter::None => None,
+        }
     }
 }

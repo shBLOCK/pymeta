@@ -159,7 +159,7 @@ pub(crate) enum Token {
     Literal(Rc<Literal>),
     Group(Rc<Group>),
     NewLine(LineColumn),
-    Spaces(u16),
+    Spaces(usize),
 }
 
 macro_rules! token_get_token_struct_fn {
@@ -204,7 +204,7 @@ impl Token {
         }
     }
 
-    pub fn spaces(&self) -> Option<u16> {
+    pub fn spaces(&self) -> Option<usize> {
         match self {
             Self::Spaces(s) => Some(*s),
             _ => None,
@@ -279,7 +279,7 @@ impl Token {
                     // add Spaces token
                     let spaces = start.column - last_column;
                     if spaces > 0 {
-                        tokens.push(Token::Spaces(spaces as u16));
+                        tokens.push(Token::Spaces(spaces));
                     }
                 }
 
@@ -369,7 +369,7 @@ impl TokenBuffer {
         self.pos
     }
 
-    pub fn reached_end(&self) -> bool {
+    pub fn exausted(&self) -> bool {
         self.pos >= self.tokens.len()
     }
 
