@@ -1,5 +1,6 @@
 use crate::utils::rust_token::CSpan;
 use std::borrow::Cow;
+use std::mem;
 use std::rc::Rc;
 
 #[derive(Debug)]
@@ -13,20 +14,27 @@ pub(crate) enum PySegment {
 
 impl PySegment {
     pub fn code(code: impl Into<Cow<'static, str>>, src_span: Option<Rc<CSpan>>) -> PySegment {
-        PySegment::Code {
+        Self::Code {
             code: code.into(),
             src_span,
         }
     }
 
-    pub fn spaces(n: usize) -> PySegment {
-        PySegment::Spaces(n)
+    pub fn spaces(n: usize) -> Self {
+        Self::Spaces(n)
     }
 
     pub fn add_to_string(&self, string: &mut String) {
         match self {
-            PySegment::Code { code, .. } => string.push_str(code),
-            PySegment::Spaces(n) => (0..*n).for_each(|_| string.push(' ')),
+            Self::Code { code, .. } => string.push_str(code),
+            Self::Spaces(n) => (0..*n).for_each(|_| string.push(' ')),
+        }
+    }
+
+    fn is_empty(&self) -> bool {
+        match self {
+            Self::Code { code, .. } => code.is_empty(),
+            Self::Spaces(_) => true,
         }
     }
 }
@@ -50,7 +58,7 @@ impl PyLine {
     }
 
     fn is_empty(&self) -> bool {
-        self.segments.is_empty()
+        self.segments.iter().all(PySegment::is_empty)
     }
 
     fn add_to_string(&self, string: &mut String) {
@@ -107,9 +115,24 @@ impl PySource {
         self.indent_all(-(min as isize));
     }
 
+    pub fn strip_repeating_empty_lines(&mut self) {
+        let old_lines = mem::replace(&mut self.lines, Vec::new());
+        let mut old_lines = old_lines.into_iter().peekable();
+        while let Some(line) = old_lines.next() {
+            if line.is_empty() {
+                while old_lines.peek().map(PyLine::is_empty).unwrap_or(false) {
+                    old_lines.next();
+                }
+            }
+            self.lines.push(line);
+        }
+    }
+
     pub fn source_code(&self) -> String {
         let mut string = String::new();
-        self.lines.iter().for_each(|line| line.add_to_string(&mut string));
+        self.lines
+            .iter()
+            .for_each(|line| line.add_to_string(&mut string));
         string
     }
 }
@@ -182,6 +205,7 @@ impl PySourceBuilder {
         );
         let mut code = self.indent_block_stack.pop().unwrap().py;
         code.strip_common_indent();
+        code.strip_repeating_empty_lines();
         code
     }
 }
