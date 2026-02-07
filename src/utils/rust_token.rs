@@ -1,3 +1,4 @@
+use crate::utils::logging::warn;
 use proc_macro2::{Delimiter, LineColumn, Span, TokenTree};
 use std::cell::OnceCell;
 use std::fmt::{Debug, Formatter};
@@ -158,7 +159,15 @@ pub(crate) enum Token {
     Punct(Rc<Punct>),
     Literal(Rc<Literal>),
     Group(Rc<Group>),
+
+    /// Represents the start of a new line.
+    ///
+    /// May not be generated if [Span] position information is not available.
     NewLine(LineColumn),
+
+    /// Represents n spaces between the previous and next token.
+    ///
+    /// May not be generated if [Span] position information is not available.
     Spaces(usize),
 }
 
@@ -204,20 +213,6 @@ impl Token {
         }
     }
 
-    pub fn spaces(&self) -> Option<usize> {
-        match self {
-            Self::Spaces(s) => Some(*s),
-            _ => None,
-        }
-    }
-
-    pub fn is_spaces(&self) -> bool {
-        match self {
-            Self::Spaces(_) => true,
-            _ => false,
-        }
-    }
-
     pub fn is_whitespace(&self) -> bool {
         match self {
             Self::Spaces(_) | Self::NewLine(_) => true,
@@ -231,7 +226,7 @@ impl Token {
             _ => false,
         }
     }
-    
+
     pub fn eq_group(&self, delimiter: Delimiter) -> bool {
         match self {
             Self::Group(group) => group.group.delimiter() == delimiter,
@@ -277,7 +272,13 @@ impl Token {
                     }));
                 } else if let Some(last_column) = last_column {
                     // add Spaces token
-                    let spaces = start.column - last_column;
+                    let spaces = start.column.checked_sub(last_column).unwrap_or_else(|| {
+                        warn!(
+                            "Found negative number of spaces between tokens: from {} to {}",
+                            last_column, start.column
+                        );
+                        0
+                    });
                     if spaces > 0 {
                         tokens.push(Token::Spaces(spaces));
                     }
@@ -321,10 +322,6 @@ pub(crate) struct TokenBuffer {
 }
 
 impl TokenBuffer {
-    pub fn reset(&mut self) {
-        self.pos = 0;
-    }
-    
     pub fn read_one(&mut self) -> Option<&Token> {
         self.current()?;
         self.pos += 1;
@@ -345,13 +342,6 @@ impl TokenBuffer {
         tokens.seek(offset)?;
         Some(tokens)
     }
-    
-    pub fn seek_to_end_of_line(&mut self) -> &mut Self {
-        while !self.peek(1).map_or(true, |t| t.is_newline()) {
-            self.pos += 1;
-        }
-        self
-    }
 
     pub fn current(&self) -> Option<&Token> {
         self.tokens.get(self.pos)
@@ -360,39 +350,21 @@ impl TokenBuffer {
     pub fn peek(&self, offset: isize) -> Option<&Token> {
         self.tokens.get(self.pos.checked_add_signed(offset)?)
     }
-    
-    pub fn have_n_more(&self, n: usize) -> bool {
-        self.pos + n <= self.tokens.len()
-    }
 
     pub fn pos(&self) -> usize {
         self.pos
     }
 
-    pub fn exausted(&self) -> bool {
-        self.pos >= self.tokens.len()
+    pub fn set_pos(&mut self, pos: usize) -> Result<(), ()> {
+        if pos > self.tokens.len() {
+            return Err(());
+        }
+        self.pos = pos;
+        Ok(())
     }
 
-    pub fn iter(&self) -> core::slice::Iter<'_, Token> {
-        self.tokens.iter()
-    }
-    
-    /// Find the "closest" span that makes sense for diagnostics purposes.
-    /// 
-    /// This is for use in contexts like "error occurred near here".
-    pub fn get_current_span_for_diagnostics(&self) -> Span {
-        if let Some(span) = self.current().and_then(Token::span) {
-            return span.inner();
-        }
-        for search_direction in [1, -1] {
-            for i in 1.. {
-                let Some(token) = self.peek(i * search_direction) else { break };
-                if let Some(span) = token.span() {
-                    return span.inner();
-                }
-            }
-        }
-        Span::call_site()
+    pub fn exausted(&self) -> bool {
+        self.pos >= self.tokens.len()
     }
 }
 

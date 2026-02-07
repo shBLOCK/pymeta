@@ -1,41 +1,24 @@
 use crate::utils::rust_token::CSpan;
 use std::borrow::Cow;
-use std::mem;
+use std::iter::repeat_n;
 use std::rc::Rc;
 
 #[derive(Debug)]
-pub(crate) enum PySegment {
-    Code {
-        code: Cow<'static, str>,
-        src_span: Option<Rc<CSpan>>,
-    },
-    Spaces(usize),
+pub(crate) struct PySegment {
+    code: Cow<'static, str>,
+    src_span: Option<Rc<CSpan>>,
 }
 
 impl PySegment {
-    pub fn code(code: impl Into<Cow<'static, str>>, src_span: Option<Rc<CSpan>>) -> PySegment {
-        Self::Code {
+    pub fn new(code: impl Into<Cow<'static, str>>, src_span: Option<Rc<CSpan>>) -> PySegment {
+        Self {
             code: code.into(),
             src_span,
         }
     }
 
-    pub fn spaces(n: usize) -> Self {
-        Self::Spaces(n)
-    }
-
     pub fn add_to_string(&self, string: &mut String) {
-        match self {
-            Self::Code { code, .. } => string.push_str(code),
-            Self::Spaces(n) => (0..*n).for_each(|_| string.push(' ')),
-        }
-    }
-
-    fn is_empty(&self) -> bool {
-        match self {
-            Self::Code { code, .. } => code.is_empty(),
-            Self::Spaces(_) => true,
-        }
+        string.push_str(&self.code);
     }
 }
 
@@ -46,23 +29,12 @@ struct PyLine {
 }
 
 impl PyLine {
-    fn new(indent: usize) -> Self {
-        Self {
-            segments: Vec::new(),
-            indent,
-        }
-    }
-
-    fn append(&mut self, segment: PySegment) {
-        self.segments.push(segment);
-    }
-
     fn is_empty(&self) -> bool {
-        self.segments.iter().all(PySegment::is_empty)
+        self.segments.is_empty()
     }
 
     fn add_to_string(&self, string: &mut String) {
-        (0..self.indent).for_each(|_| string.push(' '));
+        string.extend(repeat_n(' ', self.indent));
         self.segments
             .iter()
             .for_each(|segment| segment.add_to_string(string));
@@ -76,58 +48,6 @@ pub(crate) struct PySource {
 }
 
 impl PySource {
-    pub fn new() -> Self {
-        Self { lines: Vec::new() }
-    }
-
-    fn new_line(&mut self, indent: usize) {
-        self.lines.push(PyLine::new(indent));
-    }
-
-    fn append(&mut self, segment: PySegment) {
-        self.lines
-            .last_mut()
-            .expect("Can't append to an empty PySourceCode")
-            .append(segment);
-    }
-
-    pub fn indent_all(&mut self, n: isize) {
-        for line in &mut self.lines {
-            if line.is_empty() {
-                continue;
-            }
-            line.indent = (line.indent as isize + n)
-                .try_into()
-                .unwrap_or_else(|_| panic!("Indent overflow, adding {n} to {}.", line.indent));
-        }
-    }
-
-    pub fn strip_common_indent(&mut self) {
-        let Some(min) = self
-            .lines
-            .iter()
-            .filter(|line| !line.is_empty())
-            .map(|line| line.indent)
-            .min()
-        else {
-            return;
-        };
-        self.indent_all(-(min as isize));
-    }
-
-    pub fn strip_repeating_empty_lines(&mut self) {
-        let old_lines = mem::replace(&mut self.lines, Vec::new());
-        let mut old_lines = old_lines.into_iter().peekable();
-        while let Some(line) = old_lines.next() {
-            if line.is_empty() {
-                while old_lines.peek().map(PyLine::is_empty).unwrap_or(false) {
-                    old_lines.next();
-                }
-            }
-            self.lines.push(line);
-        }
-    }
-
     pub fn source_code(&self) -> String {
         let mut string = String::new();
         self.lines
@@ -137,75 +57,166 @@ impl PySource {
     }
 }
 
-struct IndentBlock {
-    py: PySource,
-    indent: usize,
-}
+pub(crate) mod builder {
+    use super::{PySegment, PySource};
+    use either::Either;
+    use std::cell::{RefCell, RefMut};
+    use std::mem;
+    use std::rc::Rc;
 
-pub(crate) struct PySourceBuilder {
-    indent_block_stack: Vec<IndentBlock>,
-}
+    #[derive(Debug)]
+    struct PyLine {
+        segments: Vec<PySegment>,
+        indent: Option<usize>,
+    }
 
-impl PySourceBuilder {
-    pub fn new() -> Self {
-        Self {
-            indent_block_stack: vec![IndentBlock {
-                py: PySource::new(),
-                indent: 0,
-            }],
+    impl PyLine {
+        fn new(indent: Option<usize>) -> Self {
+            Self {
+                segments: Vec::new(),
+                indent,
+            }
+        }
+
+        fn append(&mut self, segment: PySegment) {
+            self.segments.push(segment);
         }
     }
 
-    pub fn new_line(&mut self, indent: usize) {
-        self.indent_block_stack
-            .last_mut()
-            .unwrap()
-            .py
-            .new_line(indent);
+    #[derive(Debug)]
+    struct IndentBlock {
+        content: Vec<Either<PyLine, Rc<RefCell<IndentBlock>>>>,
+        indent: usize,
     }
 
-    pub fn append(&mut self, segment: PySegment) {
-        self.indent_block_stack
-            .last_mut()
-            .unwrap()
-            .py
-            .append(segment);
+    impl IndentBlock {
+        fn new(indent: usize) -> Self {
+            Self {
+                content: Vec::new(),
+                indent,
+            }
+        }
+
+        fn append(&mut self, segment: PySegment) {
+            self.content
+                .last_mut()
+                .expect("Appending to an empty IndentBlock")
+                .as_mut()
+                .expect_left("The last element is not a PyLine")
+                .append(segment);
+        }
+
+        fn new_line(&mut self, indent: Option<usize>) {
+            self.content.push(Either::Left(PyLine::new(indent)))
+        }
+
+        fn new_indent_block(&mut self, indent: usize) -> Rc<RefCell<IndentBlock>> {
+            let block = Rc::new(RefCell::new(IndentBlock::new(indent)));
+            self.content.push(Either::Right(Rc::clone(&block)));
+            block
+        }
     }
 
-    pub fn push_indent_block(&mut self, indent: usize) {
-        self.indent_block_stack.push(IndentBlock {
-            py: PySource::new(),
-            indent,
-        });
+    pub(crate) struct PySourceBuilder {
+        indent_block_stack: Vec<Rc<RefCell<IndentBlock>>>,
     }
 
-    pub fn pop_indent_block(&mut self) {
-        assert!(
-            self.indent_block_stack.len() > 1,
-            "push_indent / pop_indent mismatch, root indent block can't be popped."
-        );
+    impl PySourceBuilder {
+        pub fn new() -> Self {
+            Self {
+                indent_block_stack: vec![Rc::new(RefCell::new(IndentBlock::new(0)))],
+            }
+        }
 
-        let mut block = self.indent_block_stack.pop().unwrap();
-        let top = self.indent_block_stack.last_mut().unwrap();
+        fn top(&mut self) -> RefMut<'_, IndentBlock> {
+            self.indent_block_stack.last_mut().unwrap().borrow_mut()
+        }
 
-        block.py.strip_common_indent();
-        let prev_line_indent = top.py.lines.last().map_or(0, |line| line.indent);
-        block
-            .py
-            .indent_all(prev_line_indent as isize + block.indent as isize);
+        pub fn append(&mut self, segment: PySegment) {
+            self.top().append(segment);
+        }
 
-        top.py.lines.extend(block.py.lines);
-    }
+        pub fn new_line(&mut self, indent: Option<usize>) {
+            self.top().new_line(indent);
+        }
 
-    pub fn finish(mut self) -> PySource {
-        assert_eq!(
-            self.indent_block_stack.len(),
-            1,
-            "push_indent / pop_indent mismatch."
-        );
-        let mut code = self.indent_block_stack.pop().unwrap().py;
-        code.strip_common_indent();
-        code.strip_repeating_empty_lines();
-        code
+        pub fn push_indent_block(&mut self, indent: usize) {
+            let block = { self.top().new_indent_block(indent) };
+            self.indent_block_stack.push(block);
+        }
+
+        pub fn pop_indent_block(&mut self) {
+            assert!(
+                self.indent_block_stack.len() > 1,
+                "root indent block can't be popped (push_indent_block / pop_indent_block mismatch?)"
+            );
+            self.indent_block_stack.pop();
+        }
+
+        pub fn finish(self) -> PySource {
+            assert_eq!(
+                self.indent_block_stack.len(),
+                1,
+                "push_indent_block / pop_indent_block mismatch"
+            );
+
+            struct Processor {
+                lines: Vec<super::PyLine>,
+            }
+            impl Processor {
+                fn process(&mut self, block: &mut IndentBlock, last_indent: usize) {
+                    // let mut block = block.borrow_mut();
+                    let min_indent = block
+                        .content
+                        .iter()
+                        .filter_map(|it| it.as_ref().left().and_then(|line| line.indent))
+                        .min()
+                        .unwrap_or(0);
+
+                    // strip common indent
+                    for content in block.content.iter_mut() {
+                        if let Either::Left(line) = content {
+                            line.indent = Some(
+                                last_indent
+                                    + block.indent
+                                    + line.indent.map(|i| i - min_indent).unwrap_or(0),
+                            );
+                        }
+                    }
+
+                    let mut last_indent = last_indent + block.indent;
+                    for content in block.content.iter_mut() {
+                        match content {
+                            Either::Left(line) => {
+                                let line = super::PyLine {
+                                    segments: mem::take(&mut line.segments),
+                                    indent: line.indent.unwrap(),
+                                };
+                                last_indent = line.indent;
+                                self.lines.push(line);
+                            }
+                            Either::Right(block) => {
+                                self.process(&mut block.borrow_mut(), last_indent)
+                            }
+                        }
+                    }
+                }
+            }
+
+            let mut processor = Processor { lines: Vec::new() };
+            processor.process(&mut self.indent_block_stack[0].borrow_mut(), 0);
+
+            let mut lines = Vec::new();
+            let mut was_empty_line = false;
+            for line in processor.lines {
+                let is_empty_line = line.is_empty();
+                if !is_empty_line || !was_empty_line {
+                    lines.push(line);
+                }
+                was_empty_line = is_empty_line;
+            }
+
+            PySource { lines }
+        }
     }
 }

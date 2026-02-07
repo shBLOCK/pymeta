@@ -1,28 +1,23 @@
-use crate::rust_to_py::utils::{PunctEx, TokenBufferEx};
-use crate::utils::logging::*;
-use crate::utils::rust_token::{Group, Ident, Punct, Token, TokenBuffer};
-use crate::utils::SpanEx;
+use crate::utils::rust_token::{Group, Ident, Punct, Token};
 use either::Either;
 use proc_macro2::LineColumn;
-use proc_macro_error2::abort;
 use std::rc::Rc;
 
 #[derive(Debug)]
-pub(crate) struct PyLogicalLine {
+pub(crate) struct PyStmt {
     pub newline: Option<LineColumn>,
-    pub indent: usize,
     pub marker: Rc<Punct>,
     pub tokens: Rc<[Token]>,
 }
 
 #[derive(Debug)]
-pub(crate) struct InlinePyExpr {
+pub(crate) struct PyExpr {
     pub start_marker: Rc<Punct>,
     pub end_marker: Rc<Punct>,
     pub tokens: Rc<[Token]>,
 }
 
-pub(crate) type IdentWithInlinePyExpr = Box<[Either<Rc<Ident>, InlinePyExpr>]>;
+pub(crate) type IdentWithPyExpr = Vec<Either<Rc<Ident>, PyExpr>>;
 
 #[derive(Debug)]
 pub(crate) enum RustCode {
@@ -36,17 +31,17 @@ pub(crate) enum RustCode {
     /// const FOO = @u16(2 ** 10)@;
     /// ```
     /// TODO: better docs
-    InlinePyExpr(InlinePyExpr),
+    PyExpr(PyExpr),
 
     /// ```
     /// const FOO_@"A" * 10@_BAR = 42;
     /// ```
     /// TODO: better docs
-    IdentWithInlinePyExpr(IdentWithInlinePyExpr),
+    IdentWithPyExpr(IdentWithPyExpr),
 }
 
 #[derive(Debug)]
-pub(crate) struct RustMultilineBlock {
+pub(crate) struct RustCodeWithBlock {
     pub code: Box<[RustCode]>,
     pub group: Rc<Group>,
     pub block: Box<[CodeRegion]>,
@@ -54,7 +49,7 @@ pub(crate) struct RustMultilineBlock {
 
 #[derive(Debug)]
 pub(crate) struct PyStmtWithIndentBlock {
-    pub line: PyLogicalLine,
+    pub stmt: PyStmt,
     pub group: Rc<Group>,
     pub block: Box<[CodeRegion]>,
 }
@@ -67,7 +62,7 @@ pub(crate) enum CodeRegion {
     ///
     /// A continuous region of Rust code is broken up into a number of these
     /// to make the resulting Python code more readable.
-    RustCode(Box<[RustCode]>),
+    RustCode(Vec<RustCode>),
 
     /// Some Rust code followed by a multi-line block ([Group]).
     /// The block may contain Python code, both inline and non-inline ones.
@@ -78,43 +73,12 @@ pub(crate) enum CodeRegion {
     /// This is turned into a `with rust():` block in Python.
     /// Using context manager allows any Python code contained within this to work properly,
     /// and emit code to the correct block ([Group]).
-    RustMultilineBlock(RustMultilineBlock),
+    RustCodeWithBlock(RustCodeWithBlock),
 
-    /// A "logical line" of Python code.
-    ///
-    /// A "logical line" is a continuous region of code without line breaks,
-    /// but line breaks **within** [Group]s are allowed.
-    ///
-    /// Examples of "logical lines":
-    /// ```
-    /// @a = 1
-    /// ```
-    /// ---
-    /// ```
-    /// @print("Hello world!")
-    /// ```
-    /// ---
-    /// ```
-    /// @def foo(
-    ///     x: int,
-    ///     y: float
-    /// ): print(x + y)
-    /// ```
-    /// This one won't count as a single "logical line" if the print() is in the next line.
-    ///
-    /// ---
-    /// ```
-    /// @a = [
-    ///     1, 2, 3
-    /// ] + [
-    ///     "a",
-    ///     "b",
-    ///     "c"
-    /// ]
-    /// ```
-    PyLogicalLine(PyLogicalLine),
+    /// A Python statement.
+    PyStmt(PyStmt),
 
-    /// A "logical line" of Python code, followed by an "indent block".
+    /// A Python statement, followed by an "indent block".
     ///
     /// Something like:
     /// ```
@@ -132,8 +96,6 @@ pub(crate) enum CodeRegion {
     ///     ...
     /// }
     /// ```
-    /// (A statement not starting at the beginning of a line is only allowed
-    /// if it immediately (or after spaces) follows an indent block.)
     ///
     /// In the generated Python code, the `{}` of the indent block is stripped out,
     /// but explicit indentation is applied to the code within the block.
@@ -150,344 +112,207 @@ macro_rules! impl_code_region_from_inner {
         }
     };
 }
-impl_code_region_from_inner!(RustCode, Box<[RustCode]>);
-impl_code_region_from_inner!(RustMultilineBlock, RustMultilineBlock);
-impl_code_region_from_inner!(PyLogicalLine, PyLogicalLine);
+impl_code_region_from_inner!(RustCode, Vec<RustCode>);
+impl_code_region_from_inner!(RustCodeWithBlock, RustCodeWithBlock);
+impl_code_region_from_inner!(PyStmt, PyStmt);
 impl_code_region_from_inner!(PyStmtWithIndentBlock, PyStmtWithIndentBlock);
 
-impl CodeRegion {
-    fn skip_py_marker_before_next_logical_newline_or_indent_block(
-        tokens: &mut TokenBuffer,
-    ) -> Result<&mut TokenBuffer, ()> {
-        loop {
-            if tokens.current().map_or(true, Token::is_newline) {
-                return Err(());
-            }
-            if tokens.is_indent_block() {
-                return Err(());
-            }
+pub(crate) mod parser {
+    use super::{CodeRegion, PyExpr, PyStmt, PyStmtWithIndentBlock, RustCode, RustCodeWithBlock};
+    use crate::rust_to_py::utils::TokenBufferEx;
+    use crate::rust_to_py::CONCAT_MARKER;
+    use crate::utils::match_unwrap;
+    use crate::utils::rust_token::{Token, TokenBuffer};
+    use either::Either;
+    use std::rc::Rc;
 
-            if tokens.is_py_marker_end() {
-                tokens.seek(1).unwrap();
-                return Ok(tokens);
-            }
-
-            tokens.seek(1);
-        }
+    pub(crate) struct CodeRegionParser {
+        regions: Vec<CodeRegion>,
     }
 
-    fn find_py_marker_end_before_next_logical_newline_or_indent_block(
-        mut tokens: TokenBuffer,
-    ) -> Option<Rc<Punct>> {
-        Self::skip_py_marker_before_next_logical_newline_or_indent_block(&mut tokens).ok()?;
-        Some(tokens.peek(-1).unwrap().punct().unwrap())
+    enum ParsePyResult {
+        Expr(PyExpr),
+        Stmt(PyStmt),
+        StmtWithIndentBlock(PyStmtWithIndentBlock),
     }
 
-    fn parse_py_logical_line(
-        tokens: &mut TokenBuffer,
-        last_stmt_indent: Option<usize>,
-    ) -> PyLogicalLine {
-        let newline = if tokens.current().unwrap().is_newline() {
-            Some(tokens.read_one().unwrap().newline().unwrap())
-        } else {
-            None
-        };
-        let marker = tokens.read_one().unwrap().punct().unwrap();
-        assert!(marker.is_py_marker());
-
-        let mut region_tokens = Vec::<Token>::new();
-
-        while !tokens.current().map(Token::is_newline).unwrap_or(true) {
-            let token = tokens.read_one().unwrap();
-            region_tokens.push(token.clone());
-            if tokens.seeked(-1).unwrap().is_indent_block() {
-                break;
+    impl CodeRegionParser {
+        pub(crate) fn new() -> Self {
+            Self {
+                regions: Vec::new(),
             }
         }
 
-        PyLogicalLine {
-            newline,
-            indent: newline.map(|lc| lc.column).or(last_stmt_indent).expect("last_stmt_indent must be provided if this PyLogicalLine does not start with a newline."),
-            marker,
-            tokens: Rc::from(region_tokens),
-        }
-    }
+        fn parse_py(tokens: &mut TokenBuffer) -> Option<ParsePyResult> {
+            let rewind_pos = tokens.pos();
 
-    fn parse_indent_block(line: PyLogicalLine, tokens: &mut TokenBuffer) -> PyStmtWithIndentBlock {
-        assert!(tokens.seeked(-1).unwrap().is_indent_block());
-        let group = tokens.read_one().unwrap().group().unwrap();
-        let block = Self::parse(group.tokens());
-        PyStmtWithIndentBlock { line, group, block }
-    }
-
-    /// Parses a [Self::RustCode] or a [Self::RustMultilineBlock].
-    fn parse_rust(tokens: &mut TokenBuffer) -> Either<Box<[RustCode]>, RustMultilineBlock> {
-        fn parse_inline_py_expr(tokens: &mut TokenBuffer) -> InlinePyExpr {
-            trace!("parse_rust: parse_inline_py_expr");
-            let start = tokens.read_one().unwrap().punct().unwrap();
-            assert!(start.is_py_marker());
-            let mut py_tokens = Vec::new();
-            while !tokens.is_py_marker_end() {
-                let Some(token) = tokens.read_one() else {
-                    abort!(
-                        start.span().inner().join_or_fallback(
-                            tokens.peek(-1).and_then(|t| t.span()).map(|s| s.inner())
-                        ),
-                        "Incomplete inline Python expression (unexpected EOF)."
-                    )
-                };
-                if token.is_newline() {
-                    abort!(
-                        start.span().inner().join_or_fallback(
-                            tokens.peek(-1).and_then(|t| t.span()).map(|s| s.inner())
-                        ),
-                        "Incomplete inline Python expression (unexpected end of line)."
-                    )
+            let newline = if tokens.current()?.is_newline() {
+                if !tokens.seeked(1)?.is_py_marker_start() {
+                    return None;
                 }
-                py_tokens.push(token.clone());
-            }
-            let end = tokens.read_one().unwrap().punct().unwrap();
-            if py_tokens.is_empty() {
-                abort!(
-                    start
-                        .span()
-                        .inner()
-                        .join_or_fallback(Some(end.span().inner())),
-                    "Empty inline Python expression."
-                );
-            }
-            InlinePyExpr {
-                start_marker: start,
-                end_marker: end,
-                tokens: Rc::from(py_tokens),
-            }
-        }
-
-        fn parse_ident_with_inline_py_expr(tokens: &mut TokenBuffer) -> IdentWithInlinePyExpr {
-            trace!("parse_rust: parse_ident_with_inline_py_expr");
-            let mut parts = Vec::new();
-            while !tokens.exausted() {
-                let token = tokens.current().unwrap();
-                if let Some(ident) = token.ident() {
-                    parts.push(Either::Left(ident));
-                    tokens.seek(1).unwrap();
-                } else if tokens.is_py_marker_start() {
-                    parts.push(Either::Right(parse_inline_py_expr(tokens)));
-                } else {
-                    break;
-                }
-            }
-            Box::from(parts)
-        }
-
-        fn detect_ident_with_inline_py_expr(mut tokens: TokenBuffer) -> bool {
-            let mut found_ident = false;
-            let mut found_py_expr = false;
-            loop {
-                if tokens.is_py_marker_start() {
-                    let start = tokens.read_one().unwrap().punct().unwrap();
-                    if CodeRegion::skip_py_marker_before_next_logical_newline_or_indent_block(
-                        &mut tokens,
-                    )
-                    .is_err()
-                    {
-                        abort!(
-                            start.span().inner().join_or_fallback(
-                                tokens.peek(-1).and_then(|t| t.span()).map(|s| s.inner())
-                            ),
-                            "Incomplete inline Python expression."
-                        );
-                    }
-                    found_py_expr = true;
-                } else if let Some(&Token::Ident(_)) = tokens.current() {
-                    found_ident = true;
-                } else {
-                    return false;
-                }
-
-                if found_ident && found_py_expr {
-                    return true;
-                }
-
-                tokens.seek(1).unwrap();
-            }
-        }
-
-        let mut code = Vec::new();
-
-        // if the current token is a newline, consume it before entering parsing loop
-        if tokens.current().unwrap().is_newline() {
-            code.push(RustCode::Code(tokens.read_one().unwrap().clone()));
-        }
-
-        loop {
-            if detect_ident_with_inline_py_expr(tokens.clone()) {
-                code.push(RustCode::IdentWithInlinePyExpr(
-                    parse_ident_with_inline_py_expr(tokens),
-                ));
-            } else if tokens.is_py_marker_start() {
-                code.push(RustCode::InlinePyExpr(parse_inline_py_expr(tokens)));
+                Some(tokens.read_one().unwrap().newline().unwrap())
             } else {
-                // normal code token or group
+                if !tokens.is_py_marker_start() {
+                    return None;
+                }
+                None
+            };
+            let start = tokens.read_one().unwrap().punct().unwrap();
 
-                let Some(token) = tokens.current() else { break };
-                if token.is_newline() {
-                    break;
+            let mut py_tokens = Vec::new();
+
+            loop {
+                if tokens.is_py_marker_end() {
+                    if let Some(_) = newline {
+                        // PyExpr can't start with a newline, rewind token buffer and return None
+                        tokens.set_pos(rewind_pos).unwrap();
+                        return None;
+                    }
+                    let end = tokens.read_one().unwrap().punct().unwrap();
+                    return Some(ParsePyResult::Expr(PyExpr {
+                        start_marker: start,
+                        end_marker: end,
+                        tokens: py_tokens.into(),
+                    }));
                 }
 
-                // by now, we are committed to use this token, so consume it
-                let token = tokens.read_one().unwrap();
+                if tokens.is_indent_block() {
+                    py_tokens.push(tokens.read_one().unwrap().clone());
+                    let group = tokens.read_one().unwrap().group().unwrap();
+                    let group_tokens = group.tokens();
+                    return Some(ParsePyResult::StmtWithIndentBlock(PyStmtWithIndentBlock {
+                        stmt: PyStmt {
+                            newline,
+                            marker: start,
+                            tokens: py_tokens.into(),
+                        },
+                        group,
+                        block: CodeRegionParser::new().parse(group_tokens).into(),
+                    }));
+                }
 
-                if let Some(group) = token.group() {
-                    let parsed = Self::parse(group.tokens());
-                    if parsed.iter().any(|region| match region {
-                        Self::RustCode(_) => false,
-                        Self::RustMultilineBlock { .. } => true,
-                        Self::PyLogicalLine(_) => true,
-                        Self::PyStmtWithIndentBlock { .. } => true,
-                    }) {
-                        trace!("parse_rust: parsing group as multiline block");
-                        let multiline = RustMultilineBlock {
-                            code: Box::from(code),
-                            group,
-                            block: parsed,
-                        };
-                        if let Some(Token::Spaces(_)) = tokens.current() {
-                            // consume the space after the multiline block, if there is any
-                            tokens.seek(1).unwrap();
+                if tokens.peek(-1).unwrap().eq_punct(';')
+                    || tokens.current().map(Token::is_newline).unwrap_or(true)
+                {
+                    return Some(ParsePyResult::Stmt(PyStmt {
+                        newline,
+                        marker: start,
+                        tokens: py_tokens.into(),
+                    }));
+                }
+
+                py_tokens.push(tokens.read_one().unwrap().clone());
+            }
+        }
+
+        fn get_or_put_rust_code_region(&mut self) -> &mut Vec<RustCode> {
+            if let Some(CodeRegion::RustCode(_)) = self.regions.last() {
+                match_unwrap!(code in CodeRegion::RustCode(code) = self.regions.last_mut().unwrap())
+            } else {
+                match_unwrap!(code in CodeRegion::RustCode(code) = self.regions.push_mut(CodeRegion::RustCode(Vec::new())))
+            }
+        }
+
+        pub(crate) fn parse(mut self, mut tokens: TokenBuffer) -> Box<[CodeRegion]> {
+            while !tokens.exausted() {
+                if let Some(py) = Self::parse_py(&mut tokens) {
+                    match (self.regions.last_mut(), py) {
+                        (_, ParsePyResult::Stmt(stmt)) => {
+                            self.regions.push(CodeRegion::PyStmt(stmt))
                         }
-                        return Either::Right(multiline);
-                    } else {
-                        trace!("parse_rust: parsing group as Rust code");
-                        let code_group = RustCode::Group {
-                            group,
-                            code: parsed
-                                .into_iter()
-                                .flat_map(|region| match region {
-                                    Self::RustCode(code) => code,
-                                    _ => unreachable!(),
-                                })
-                                .collect(),
-                        };
-                        code.push(code_group);
+                        (_, ParsePyResult::StmtWithIndentBlock(stmt)) => {
+                            self.regions.push(CodeRegion::PyStmtWithIndentBlock(stmt))
+                        }
+                        (Some(CodeRegion::RustCode(code)), ParsePyResult::Expr(expr)) => {
+                            match &mut code[..] {
+                                [.., RustCode::IdentWithPyExpr(code)] => {
+                                    code.push(Either::Right(expr));
+                                }
+                                [.., RustCode::Code(Token::Ident(_)), RustCode::Code(concat)]
+                                    if concat.eq_punct(CONCAT_MARKER) =>
+                                {
+                                    let _ = code.pop(); // concat marker
+                                    let RustCode::Code(Token::Ident(ident)) = code.pop().unwrap()
+                                    else {
+                                        unreachable!()
+                                    }; // ident
+                                    code.push(RustCode::IdentWithPyExpr(vec![
+                                        Either::Left(Rc::clone(&ident)),
+                                        Either::Right(expr),
+                                    ]));
+                                }
+                                _ => code.push(RustCode::PyExpr(expr)),
+                            }
+                        }
+                        (_, ParsePyResult::Expr(expr)) => self
+                            .regions
+                            .push(CodeRegion::RustCode(vec![RustCode::PyExpr(expr)])),
                     }
                 } else {
-                    trace!("parse_rust: parsing {token:?} as code");
-                    code.push(RustCode::Code(token.clone()));
-                }
-            }
-        }
-        Either::Left(Box::from(code))
-    }
-
-    /// Parse tokens into [CodeRegion]s.
-    ///
-    /// [tokens] must be initially at a [Token::NewLine], or be empty.
-    pub fn parse(mut tokens: TokenBuffer) -> Box<[Self]> {
-        trace!("parse: entering");
-        let mut regions = Vec::new();
-
-        while !tokens.exausted() {
-            let before_pos = tokens.pos();
-
-            let region = 'parse_one: {
-                // parse Python logical line at the start of a new line
-                if tokens.current().unwrap().is_newline() {
-                    if tokens.have_n_more(2) && tokens.seeked(1).unwrap().is_py_marker_start() {
-                        if Self::find_py_marker_end_before_next_logical_newline_or_indent_block(
-                            tokens.seeked(2).unwrap(),
-                        )
-                        .is_none()
-                        {
-                            trace!(
-                                "parse: parsing PyLogicalLine or PyStmtWithIndentBlock on new line"
-                            );
-                            let line = Self::parse_py_logical_line(&mut tokens, None);
-                            break 'parse_one if tokens.seeked(-1).unwrap().is_indent_block() {
-                                Self::parse_indent_block(line, &mut tokens).into()
+                    let token = tokens.read_one().unwrap();
+                    match token {
+                        #[cfg(feature = "pretty")]
+                        newline @ Token::NewLine(_) => {
+                            self.regions
+                                .push(CodeRegion::RustCode(vec![RustCode::Code(newline.clone())]));
+                        }
+                        Token::Group(group) => {
+                            let group_regions = Self::new().parse(group.tokens());
+                            if group_regions
+                                .iter()
+                                .all(|region| matches!(region, CodeRegion::RustCode(_)))
+                            {
+                                // simple region with rust code
+                                let group_code = RustCode::Group {
+                                    group: Rc::clone(group),
+                                    code: group_regions
+                                        .into_iter()
+                                        .map(|region| {
+                                            if let CodeRegion::RustCode(code) = region {
+                                                code
+                                            } else {
+                                                unreachable!()
+                                            }
+                                        })
+                                        .flatten()
+                                        .collect(),
+                                };
+                                self.get_or_put_rust_code_region().push(group_code);
                             } else {
-                                line.into()
-                            };
+                                // a region with python statements
+                                let code = self
+                                    .regions
+                                    .pop_if(|region| matches!(region, CodeRegion::RustCode(_)))
+                                    .map(|region| match_unwrap!(code in CodeRegion::RustCode(code) = region));
+
+                                self.regions.push(CodeRegion::RustCodeWithBlock(
+                                    RustCodeWithBlock {
+                                        code: code.unwrap_or_else(Vec::new).into_boxed_slice(),
+                                        group: Rc::clone(group),
+                                        block: group_regions,
+                                    },
+                                ));
+                            }
+                        }
+                        token => {
+                            self.get_or_put_rust_code_region()
+                                .push(RustCode::Code(token.clone()));
+
+                            #[cfg(feature = "pretty")]
+                            if token.eq_punct(';') {
+                                self.regions.push(CodeRegion::RustCode(Vec::new()));
+                            }
                         }
                     }
                 }
-
-                // parse a PyStmtWithIndentBlock immediately after another PyStmtWithIndentBlock,
-                // or generate an error if other stuff immediately follows the previous PyStmtWithIndentBlock.
-                if let Some(Self::PyStmtWithIndentBlock(PyStmtWithIndentBlock {
-                    line:
-                        PyLogicalLine {
-                            indent: last_stmt_indent,
-                            ..
-                        },
-                    ..
-                })) = regions.last()
-                {
-                    if tokens.have_n_more(2) && !tokens.current().unwrap().is_newline() {
-                        // check for a valid start marker, skipping a Token::Spaces if necessary.
-                        if tokens.is_py_marker_start() {
-                        } else if tokens.current().unwrap().is_spaces()
-                            && tokens.seeked(1).unwrap().is_py_marker_start()
-                        {
-                            tokens.seek(1).unwrap(); // skip spaces
-                        } else {
-                            abort!(
-                                tokens.get_current_span_for_diagnostics(),
-                                "Only another Python statement with an indent block can immediately follow an indent block."
-                            );
-                        };
-
-                        if let Some(end_marker) =
-                            Self::find_py_marker_end_before_next_logical_newline_or_indent_block(
-                                tokens.seeked(1).unwrap(),
-                            )
-                        {
-                            let start_marker = tokens.current().unwrap().punct().unwrap();
-                            abort!(
-                                start_marker
-                                    .span()
-                                    .inner()
-                                    .join_or_fallback(Some(end_marker.span().inner())),
-                                "Python expression can not immediately follow an indent block."
-                            );
-                        }
-
-                        trace!(
-                            "prase: parsing Python stmt with indent block immediately after another indent block"
-                        );
-                        // let region =
-                        //     Self::parse_py_logical_line(&mut tokens, Some(last_stmt_indent));
-                        // assert!(matches!(region, Self::PyStmtWithIndentBlock { .. }));
-                        break 'parse_one Self::parse_indent_block(
-                            Self::parse_py_logical_line(&mut tokens, Some(*last_stmt_indent)),
-                            &mut tokens,
-                        )
-                        .into();
-                    }
-                }
-
-                trace!("parse: parsing general Rust code");
-                Self::parse_rust(&mut tokens)
-                    .map_either(CodeRegion::from, CodeRegion::from)
-                    .into_inner()
-            };
-
-            trace!("parse: parsed one CodeRegion: {region:?}");
-
-            regions.push(region);
-
-            let after_pos = tokens.pos();
-            if after_pos == before_pos {
-                abort!(
-                    tokens.get_current_span_for_diagnostics(),
-                    format!(
-                        "BUG: CodeRegion parser got stuck around here, aborting to avoid infinite loop.\nSo far parsed: {regions:#?}"
-                    )
-                );
             }
-        }
+            self.regions = self
+                .regions
+                .into_iter()
+                .filter(|region| !matches!(region, CodeRegion::RustCode(code) if code.is_empty()))
+                .collect();
 
-        trace!("parse: exiting");
-        regions.into()
+            self.regions.into()
+        }
     }
 }

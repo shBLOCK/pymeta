@@ -4,3 +4,5 @@ mod utils;
 
 pub(crate) const PY_MARKER: char = '@';
 pub(crate) const PY_MARKER_STR: &'static str = "@";
+
+pub(crate) const CONCAT_MARKER: char = '~';

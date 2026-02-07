@@ -4,14 +4,9 @@ use proc_macro2::Delimiter;
 use std::rc::Rc;
 
 pub(crate) trait PunctEx {
-    fn is_py_marker(&self) -> bool;
     fn as_str(&self) -> &'static str;
 }
 impl PunctEx for Punct {
-    fn is_py_marker(&self) -> bool {
-        self.inner().as_char() == PY_MARKER
-    }
-
     fn as_str(&self) -> &'static str {
         match self.inner().as_char() {
             '!' => "!",
@@ -41,21 +36,8 @@ impl PunctEx for Punct {
     }
 }
 
-pub(super) trait TokenEx {
-    fn is_py_marker(&self) -> bool;
-}
-impl TokenEx for Token {
-    fn is_py_marker(&self) -> bool {
-        match self {
-            Token::Punct(punct) => punct.is_py_marker(),
-            _ => false,
-        }
-    }
-}
-
 pub(super) trait TokenOptionEx {
     fn is_whitespace(&self) -> bool;
-    fn is_py_marker(&self) -> bool;
     fn eq_punct(&self, c: char) -> bool;
     fn eq_group(&self, delimiter: Delimiter) -> bool;
 }
@@ -64,13 +46,6 @@ impl TokenOptionEx for Option<&Token> {
         match self {
             Some(token) => token.is_whitespace(),
             None => true,
-        }
-    }
-
-    fn is_py_marker(&self) -> bool {
-        match self {
-            Some(token) => token.is_py_marker(),
-            None => false,
         }
     }
 
@@ -100,12 +75,12 @@ pub(super) trait TokenBufferEx {
 }
 impl TokenBufferEx for TokenBuffer {
     fn is_current_py_marker_escaped(&self) -> bool {
-        assert!(self.current().is_py_marker());
+        assert!(self.current().eq_punct(PY_MARKER));
         self.peek(-1).eq_punct('<') && self.peek(1).eq_punct('>')
     }
 
     fn is_py_marker_escape(&self) -> bool {
-        self.peek(1).is_py_marker() && self.seeked(1).unwrap().is_current_py_marker_escaped()
+        self.peek(1).eq_punct(PY_MARKER) && self.seeked(1).unwrap().is_current_py_marker_escaped()
     }
 
     fn py_marker_escape_span(&self) -> Rc<CSpan> {
@@ -123,13 +98,13 @@ impl TokenBufferEx for TokenBuffer {
     }
 
     fn is_py_marker_start(&self) -> bool {
-        self.current().is_py_marker()
+        self.current().eq_punct(PY_MARKER)
             && !self.peek(1).is_whitespace()
             && !self.is_current_py_marker_escaped()
     }
 
     fn is_py_marker_end(&self) -> bool {
-        self.current().is_py_marker()
+        self.current().eq_punct(PY_MARKER)
             && !self.peek(-1).is_whitespace()
             && !self.is_current_py_marker_escaped()
     }
@@ -140,31 +115,11 @@ impl TokenBufferEx for TokenBuffer {
 }
 
 pub(super) trait DelimiterEx {
-    fn left_char(self) -> Option<char>;
-    fn right_char(self) -> Option<char>;
     fn left_str(self) -> Option<&'static str>;
     fn right_str(self) -> Option<&'static str>;
     fn left_right_str(self) -> Option<&'static str>;
 }
 impl DelimiterEx for Delimiter {
-    fn left_char(self) -> Option<char> {
-        match self {
-            Delimiter::Parenthesis => Some('('),
-            Delimiter::Brace => Some('{'),
-            Delimiter::Bracket => Some('['),
-            Delimiter::None => None,
-        }
-    }
-
-    fn right_char(self) -> Option<char> {
-        match self {
-            Delimiter::Parenthesis => Some(')'),
-            Delimiter::Brace => Some('}'),
-            Delimiter::Bracket => Some(']'),
-            Delimiter::None => None,
-        }
-    }
-
     fn left_str(self) -> Option<&'static str> {
         match self {
             Delimiter::Parenthesis => Some("("),

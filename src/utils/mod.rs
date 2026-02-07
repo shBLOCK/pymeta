@@ -1,8 +1,8 @@
 use proc_macro2::Span;
 
-pub(crate) mod rust_token;
-pub(crate) mod py_source;
 pub(crate) mod logging;
+pub(crate) mod py_source;
+pub(crate) mod rust_token;
 
 pub(crate) trait SpanOptionEx {
     fn join_or_fallback(self, other: Self) -> Span;
@@ -26,3 +26,11 @@ impl SpanEx for Span {
         Some(self).join_or_fallback(other)
     }
 }
+
+macro_rules! match_unwrap {
+    ($var:ident in $pattern:pat = $expr:expr) => {{
+        let $pattern = $expr else { unreachable!() };
+        $var
+    }};
+}
+pub(crate) use match_unwrap;
