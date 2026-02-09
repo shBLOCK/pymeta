@@ -1,11 +1,14 @@
 from abc import ABC, abstractmethod
 from collections import deque
 from string.templatelib import Template
-from typing import SupportsInt, SupportsFloat, final, Collection, Final, SupportsBytes, MutableSequence, overload, Self
+from typing import SupportsInt, SupportsFloat, final, Collection, Final, SupportsBytes, MutableSequence, overload, Self, \
+    Any, Iterable
+
+import _pymeta
 
 
 @final
-class Span: # TODO: make this a Rust native class
+class Span:  # TODO: make this a Rust native class
     @classmethod
     def call_site(cls) -> Span:
         return Span()  # TODO
@@ -15,6 +18,8 @@ class Span: # TODO: make this a Rust native class
 
 
 class Token(ABC):
+    __slots__ = ("span",)
+
     span: Span
 
     def __init__(self, span: Span | None = None):
@@ -27,21 +32,253 @@ class Token(ABC):
     def __repr__(self): ...
 
 
-type CoerceToTokens = Tokens | Token | Template | int | float | str | bytes
+type CoerceToTokens = Token | Template | str | int | float | bytes | bytearray | memoryview[Any] | tuple | list
 
 @final
 class Tokens(MutableSequence[Token]):
     _CTX_STACK = deque()
 
+    __slots__ = ("_tokens",)
+
     @classmethod
     def _current_ctx(cls) -> Tokens:
         return cls._CTX_STACK[-1]
 
-    def __init__(self, *args: CoerceToTokens):
-        def coerce():
-            yield  # TODO
+    @staticmethod
+    def _coerce(items: Iterable[CoerceToTokens]) -> list[Token]:
+        _results = []
+        _group_stack: list[Group] = []
 
-        self._tokens = list(coerce())
+        def emit(token: Token):
+            if _group_stack:
+                _group_stack[-1].tokens.append(token)
+            else:
+                _results.append(token)
+
+        def push_group(delim: str):
+            delim = Group.OPENING_TO_DELIMITER.get(delim)
+            assert delim is not None
+            _group_stack.append(Group(delim))
+
+        def pop_group(delim: str):
+            delim = Group.CLOSING_TO_DELIMITER.get(delim)
+            assert delim is not None
+            group = _group_stack.pop(-1)
+            if group.delimiter != delim:
+                raise ValueError(f"Group delimiter mismatch: opening={group.delimiter[0]}, closing={delim[1]}")
+            emit(group)
+
+        def parse(string: str):
+            index = 0
+
+            def parse_punct() -> bool:
+                nonlocal index
+
+                if string[index] not in Punct.CHARS:
+                    return False
+
+                start = index
+                index += 1
+                while index < len(string) and string[index] in Punct.CHARS:
+                    index += 1
+
+                # lifetime
+                spacing = Punct.JOINT \
+                    if string[index - 1] == "'" and (index < len(string) and _pymeta.is_ident_start(string[index])) \
+                    else Punct.ALONE
+
+                emit(Punct(string[start:index], spacing))
+                return True
+
+            def parse_number() -> bool:
+                import re
+                nonlocal index
+
+                def is_dec_digit(char: str) -> bool:
+                    return ord('0') <= ord(char) <= ord('9')
+
+                def is_digit(char: str) -> bool:
+                    char = ord(char)
+                    return (ord('0') <= char <= ord('9')
+                            or ord('a') <= char <= ord('f')
+                            or ord('A') <= char <= ord('F'))
+
+                start = index
+
+                # if string[index] == "-":
+                #     if not is_dec_digit(string[index + 1]):
+                #         return False
+                #     index += 1
+                # else:
+                #     if not is_dec_digit(string[index]):
+                #         return False
+
+                if not is_dec_digit(string[index]):
+                    return False
+
+                index += 1
+                found_dot = False
+                while index < len(string):
+                    char = string[index]
+                    if is_digit(char) or char in ('_', 'b', 'o', 'x', 'e', 'E', 'u', 'i', 'f'):
+                        continue
+                    if char == '.':
+                        if found_dot:
+                            break
+                        if (
+                            (index + 1) < len(string)
+                            and (string[index + 1] == '.' or _pymeta.is_ident_start(string[index + 1]))
+                        ):
+                            break
+                        found_dot = True
+                        continue
+                    break
+
+                segment = string[start:index]
+                # int
+                if match := re.fullmatch(
+                    r"(?P<num>(?:0[bo])?[\d_]+|0x[\da-fA-F_]+)(?P<suffix>[ui]\d+)?",
+                    segment, flags=re.ASCII
+                ):
+                    emit(IntLiteral(int(match.group("num")), match.group("suffix") or None))
+                # float
+                elif match := re.fullmatch(
+                    r"(?P<num>\d+\.\d*(?:[eE][+-]?\d+)?)(?P<suffix>f\d+)?",
+                    segment, flags=re.ASCII
+                ):
+                    emit(FloatLiteral(float(match.group("num")), match.group("suffix") or None))
+                else:
+                    raise ValueError(f"Invalid number literal: {segment!r}")
+
+                return True
+
+            def parse_str_literal() -> bool:
+                nonlocal index
+
+                if string[index] in ('b', 'c'):
+                    prefix = string[index]
+                    if not ((index + 1) < len(string) and string[index + 1] in ('"', "'")):
+                        return False
+                    quote = string[index + 1]
+                    index += 2
+                else:
+                    prefix = None
+                    if not string[index] in ('"', "'"):
+                        return False
+                    quote = string[index]
+                    index += 1
+
+                content = []
+                while index < len(string):
+                    if string[index] == quote:
+                        index += 1
+                        break
+                    match tuple(string[index:index + 3]):
+                        case ('\\', '"', *_):
+                            content.append('"')
+                            index += 2
+                        case ('\\', "'", *_):
+                            content.append("'")
+                            index += 2
+                        case ('\\', '\\', '"'):
+                            content.append(r'\"')
+                            index += 3
+                        case ('\\', '\\', "'"):
+                            content.append(r"\'")
+                            index += 3
+                        case (char, *_):
+                            content.append(char)
+                            index += 1
+                else:
+                    raise ValueError("Incomplete string literal")
+
+                content = "".join(content)
+                is_char = quote == "'"
+                match prefix:
+                    case None:
+                        emit(StrLiteral(content, StrLiteral.CHR if is_char else StrLiteral.STR))
+                    case 'b':
+                        emit(BytesLiteral(content.encode(), BytesLiteral.BYTE if is_char else BytesLiteral.BYTES))
+                    case 'c':
+                        emit(StrLiteral(content, StrLiteral.CSTR))
+                    case _:
+                        assert not "reachable"
+
+                return True
+
+            while index < len(string):
+                char = string[index:index + 2]
+                if char.isspace():
+                    index += 1
+                elif char in "([{":
+                    push_group(char)
+                    index += 1
+                elif char in ")]}":
+                    pop_group(char)
+                    index += 1
+                elif parse_punct():
+                    pass
+                elif _pymeta.is_ident_start(char):
+                    start = index
+                    index += 1
+                    while index < len(string) and _pymeta.is_ident_continue(string[index]):
+                        index += 1
+                    emit(Ident(string[start:index]))
+                elif parse_number():
+                    pass
+                elif parse_str_literal():
+                    pass
+                else:
+                    raise ValueError(f"Invalid syntax near {string[max(index - 4, 0):index + 5]!r}")
+
+        def process_one(item: CoerceToTokens):
+            match item:
+                case Token():
+                    emit(item)
+                case int(value):
+                    emit(IntLiteral(value))
+                case float(value):
+                    emit(FloatLiteral(value))
+                case bytes(bts) | bytearray(bts) | memoryview(bts):
+                    emit(BytesLiteral(bts))
+                case tuple(tup):
+                    emit(Group(Group.PARENTHESIS, Tokens(items=tup)))
+                case list(lst):
+                    emit(Group(Group.BRACKET, Tokens(items=lst)))
+                case Template() as template:
+                    for part in template:
+                        if isinstance(part, str):
+                            parse(part)
+                        else:
+                            process_one(part)
+                case str(string):
+                    parse(string)
+                case _:
+                    raise TypeError(f"Item {item!r} or type {type(item)} can't be coerced into tokens.")
+
+        for item in items:
+            process_one(item)
+
+        return _results
+
+    def __init__(
+        self,
+        *args: CoerceToTokens,
+        items: Iterable[CoerceToTokens] | None = None,
+        tokens: Iterable[Token] | None = None
+    ):
+        match (args, items, tokens):
+            case (_, None, None):
+                self._tokens = Tokens._coerce(args)
+            case ((), items, None) if items is not None:
+                self._tokens = Tokens._coerce(items)
+            case ((), None, tokens) if tokens is not None:
+                self._tokens = list(tokens)
+                for token in self._tokens:
+                    if not isinstance(token, Token):
+                        raise TypeError(f"Not a Token: {token!r}")
+            case _:
+                raise ValueError("Multiple arg collections provided")
 
     def __enter__(self) -> Self:
         Tokens._CTX_STACK.append(self)
@@ -61,10 +298,12 @@ class Tokens(MutableSequence[Token]):
         return self._tokens.insert(index, value)
 
     @overload
-    def __getitem__(self, index: int) -> Token: ...
+    def __getitem__(self, index: int) -> Token:
+        ...
 
     @overload
-    def __getitem__(self, index: slice) -> Tokens: ...
+    def __getitem__(self, index: slice) -> Tokens:
+        ...
 
     def __getitem__(self, index):
         result = self._tokens.__getitem__(index)
@@ -81,6 +320,19 @@ class Tokens(MutableSequence[Token]):
     def __len__(self):
         return self._tokens.__len__()
 
+    def append(self, value: Token):
+        self._tokens.append(value)
+
+    def extend(self, values):
+        self._tokens.extend(values)
+
+    def reverse(self):
+        raise NotImplementedError
+
+    def __reversed__(self):
+        raise NotImplementedError
+
+
 # noinspection PyProtectedMember
 Tokens._CTX_STACK.append(Tokens())
 
@@ -88,10 +340,15 @@ Tokens._CTX_STACK.append(Tokens())
 @final
 class Group(Token):
     PARENTHESIS: Final[str] = "()"
-    BRACE: Final[str] = "{}"
     BRACKET: Final[str] = "[]"
+    BRACE: Final[str] = "{}"
     NONE: Final[str] = ""
-    DELIMITERS: Final[Collection[str]] = (PARENTHESIS, BRACE, BRACKET, NONE)
+    DELIMITERS: Final[Collection[str]] = (PARENTHESIS, BRACKET, BRACE, NONE)
+    OPENING_TO_DELIMITER: Final[dict[str, str]] = {"(": "()", "[": "[]", "{": "{}"}
+    CLOSING_TO_DELIMITER: Final[dict[str, str]] = {")": "()", "]": "[]", "}": "{}"}
+
+    __slots__ = ("delimiter", "tokens")
+    __match_args__ = ("delimiter", "tokens")
 
     delimiter: str
     tokens: Tokens
@@ -102,6 +359,14 @@ class Group(Token):
             raise ValueError(f"invalid group delimiter: \"{delimiter}\"")
         self.delimiter = delimiter
         self.tokens = tokens if tokens is not None else Tokens()
+
+    @property
+    def opening(self) -> str:
+        return self.delimiter[0] if self.delimiter != "" else ""
+
+    @property
+    def closing(self) -> str:
+        return self.delimiter[1] if self.delimiter != "" else ""
 
     def __str__(self):
         delim = self.delimiter if self.delimiter != "" else "∅∅"
@@ -119,6 +384,9 @@ class Group(Token):
 
 @final
 class Ident(Token):
+    __slots__ = ("value",)
+    __match_args__ = ("value",)
+
     value: str
 
     def __init__(self, value: str, span: Span | None = None):
@@ -135,15 +403,24 @@ class Ident(Token):
 @final
 class Punct(Token):
     CHARS: Final[Collection[str]] = tuple("=<>!~+-*/%^&|@.,;:#$?'")
+    ALONE: Final[str] = "alone"
+    JOINT: Final[str] = "joint"
+
+    __slots__ = ("value", "spacing")
+    __match_args__ = ("value", "spacing")
 
     value: str
+    spacing: str
 
-    def __init__(self, value: str, span: Span | None = None):
+    def __init__(self, value: str, spacing: str = ALONE, span: Span | None = None):
         super().__init__(span)
         for c in value:
             if c not in Punct.CHARS:
-                raise ValueError(f"invalid punctuation char '{c}'")
+                raise ValueError(f"Invalid punctuation char '{c}'")
         self.value = value
+        if spacing not in (Punct.ALONE, Punct.JOINT):
+            raise ValueError(f"Invalid punctuation spacing type: \"{spacing}\"")
+        self.spacing = spacing
 
     def __str__(self):
         return self.value
@@ -153,6 +430,9 @@ class Punct(Token):
 
 
 class Literal[T](Token, ABC):
+    __slots__ = ("value",)
+    __match_args__ = ("value",)
+
     value: T
 
 
@@ -160,12 +440,14 @@ class Literal[T](Token, ABC):
 class IntLiteral(Literal[int]):
     SUFFIXES: Final[Collection[str]] = tuple(a + b for a in "ui" for b in ("8", "16", "32", "64", "128", "size"))
 
+    __slots__ = ("suffix",)
+
     suffix: str | None
 
     def __init__(self, value: SupportsInt, suffix: str | None = None, span: Span | None = None):
         super().__init__(span)
         self.value = int(value)
-        if isinstance(suffix, str) and suffix not in IntLiteral.SUFFIXES:
+        if suffix is not None and suffix not in IntLiteral.SUFFIXES:
             raise ValueError(f"invalid {self.__class__.__name__} suffix \"{suffix}\"")
         self.suffix = suffix
 
@@ -174,9 +456,6 @@ class IntLiteral(Literal[int]):
 
     def __repr__(self):
         return f"{self.__class__.__name__}({self.value!r}, \"{self.suffix}\", {self.span!r})"
-
-def litint(value: SupportsInt, span: Span | None = None) -> IntLiteral:
-    return IntLiteral(value, None, span)
 
 # @formatter:off
 def u8(value: SupportsInt, span: Span | None = None) -> IntLiteral:
@@ -209,12 +488,14 @@ def isize(value: SupportsInt, span: Span | None = None) -> IntLiteral:
 class FloatLiteral(Literal[float]):
     SUFFIXES: Final[Collection[str]] = ("f32", "f64")
 
+    __slots__ = ("suffix",)
+
     suffix: str | None
 
     def __init__(self, value: SupportsFloat, suffix: str | None = None, span: Span | None = None):
         super().__init__(span)
         self.value = float(value)
-        if isinstance(suffix, str) and suffix not in FloatLiteral.SUFFIXES:
+        if suffix is not None and suffix not in FloatLiteral.SUFFIXES:
             raise ValueError(f"invalid {self.__class__.__name__} suffix \"{suffix}\"")
         self.suffix = suffix
 
@@ -224,9 +505,6 @@ class FloatLiteral(Literal[float]):
     def __repr__(self):
         return f"{self.__class__.__name__}({self.value!r}, \"{self.suffix}\", {self.span!r})"
 
-def litfloat(value: SupportsFloat, span: Span | None = None) -> FloatLiteral:
-    return FloatLiteral(value, None, span)
-
 def f32(value: SupportsFloat, span: Span | None = None) -> FloatLiteral:
     return FloatLiteral(value, "f32", span)
 
@@ -235,17 +513,19 @@ def f64(value: SupportsFloat, span: Span | None = None) -> FloatLiteral:
 
 
 class StrLiteral(Literal[str]):
-    CHAR: Final[str] = "char"
+    CHR: Final[str] = "chr"
     STR: Final[str] = "str"
     CSTR: Final[str] = "cstr"
 
+    __slots__ = ("type",)
+
     type: str
 
-    def __init__(self, value: str, type: str, span: Span | None = None):
+    def __init__(self, value: str, type: str = STR, span: Span | None = None):
         super().__init__(span)
-        if type not in (StrLiteral.STR, StrLiteral.CHAR, StrLiteral.CSTR):
+        if type not in (StrLiteral.STR, StrLiteral.CHR, StrLiteral.CSTR):
             raise ValueError(f"invalid {self.__class__.__name__} type \"{type}\"")
-        if type == StrLiteral.CHAR and len(value) != 1:
+        if type == StrLiteral.CHR and len(value) != 1:
             raise ValueError(f"\"{value}\" is not a single character")
         self.value = value
         self.type = type
@@ -256,28 +536,21 @@ class StrLiteral(Literal[str]):
     def __repr__(self):
         return f"{self.__class__.__name__}({self.value!r}, \"{self.type}\", {self.span!r})"
 
-def litchr(value: str, span: Span | None = None) -> StrLiteral:
-    return StrLiteral(value, StrLiteral.CHAR, span)
 
-def litstr(value: str, span: Span | None = None) -> StrLiteral:
-    return StrLiteral(value, StrLiteral.STR, span)
-
-def cstr(value: str, span: Span | None = None) -> StrLiteral:
-    return StrLiteral(value, StrLiteral.CSTR, span)
-
-
-class ByteLiteral(Literal[bytes]):
+class BytesLiteral(Literal[bytes]):
     BYTE: Final[str] = "byte"
     BYTES: Final[str] = "bytes"
 
+    __slots__ = ("type",)
+
     type: str
 
-    def __init__(self, value: SupportsBytes, type: str, span: Span | None = None):
+    def __init__(self, value: SupportsBytes, type: str = BYTES, span: Span | None = None):
         super().__init__(span)
         value = bytes(value)
-        if type not in (ByteLiteral.BYTE, ByteLiteral.BYTES):
+        if type not in (BytesLiteral.BYTE, BytesLiteral.BYTES):
             raise ValueError(f"invalid {self.__class__.__name__} type \"{type}\"")
-        if type == ByteLiteral.BYTE and len(value) != 1:
+        if type == BytesLiteral.BYTE and len(value) != 1:
             raise ValueError(f"\"{value}\" is not a single byte")
         self.value = value
         self.type = type
@@ -288,11 +561,61 @@ class ByteLiteral(Literal[bytes]):
     def __repr__(self):
         return f"{self.__class__.__name__}({self.value!r}, \"{self.type}\", {self.span!r})"
 
-def litbyte(value: bytes, span: Span | None = None) -> ByteLiteral:
-    return ByteLiteral(value, ByteLiteral.BYTE, span)
 
-def litbytes(value: bytes, span: Span | None = None) -> ByteLiteral:
-    return ByteLiteral(value, ByteLiteral.BYTES, span)
+# @formatter:off
+@overload
+def lit(value: str, /, *, span: Span | None = None) -> StrLiteral: ...
+@overload
+def lit(value: bytes | bytearray | memoryview[Any], /, *, span: Span | None = None) -> BytesLiteral: ...
+@overload
+def lit(*, chr: Any, span: Span | None = None) -> StrLiteral: ...
+@overload
+def lit(*, str: Any, span: Span | None = None) -> StrLiteral: ...
+@overload
+def lit(*, cstr: Any, span: Span | None = None) -> StrLiteral: ...
+@overload
+def lit(*, byte: SupportsBytes | int, span: Span | None = None) -> BytesLiteral: ...
+@overload
+def lit(*, bytes: SupportsBytes, span: Span | None = None) -> BytesLiteral: ...
+# @formatter:on
+
+def lit(
+    value=None,
+    /, *,
+    span=None,
+    **kwargs,
+):
+    if len(kwargs) == 0:
+        kwarg = ()
+    elif len(kwargs) == 1:
+        kwarg = next(iter(kwargs.items()))
+    else:
+        raise ValueError("Received multiple values")
+
+    match (value, kwarg):
+        case (str(string), ()) | (None, ("str", string)):
+            return StrLiteral(str(string), StrLiteral.STR, span)
+        case (bytes(bts) | bytearray(bts) | memoryview(bts), ()) | (None, ("bytes", bts)):
+            return BytesLiteral(bytes(bts), BytesLiteral.BYTES, span)
+        case (None, ("chr", char)):
+            return StrLiteral(str(char), StrLiteral.CHR, span)
+        case (None, ("cstr", cstr)):
+            return StrLiteral(str(cstr), StrLiteral.CSTR, span)
+        case (None, ("byte", SupportsBytes(byte))):
+            return BytesLiteral(byte, BytesLiteral.BYTE, span)
+        case (None, ("byte", int(byte))):
+            return BytesLiteral(byte.to_bytes(signed=True))
+        case (None, ("byte", invalid_byte)):
+            raise TypeError(f"{invalid_byte!r} of type {type(invalid_byte)} can't be converted into a byte literal")
+        case (None, ()):
+            raise ValueError("Expected one literal value, got none")
+        case (value, (_, _)) if value is not None:
+            raise ValueError("Received multiple values")
+        case (value, ()):
+            raise ValueError(f"Invalid value: {value}")
+        case (None, (key, value)):
+            raise ValueError(f"Invalid type and/or value: {key=}, {value=}")
+    assert not "reachable"
 
 
 # noinspection PyProtectedMember
