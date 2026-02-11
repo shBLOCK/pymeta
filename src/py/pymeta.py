@@ -123,11 +123,16 @@ class Tokens(MutableSequence[Token]):
                 if not is_dec_digit(string[index]):
                     return False
 
-                index += 1
                 found_dot = False
                 while index < len(string):
                     char = string[index]
-                    if is_digit(char) or char in ('_', 'b', 'o', 'x', 'e', 'E', 'u', 'i', 'f'):
+                    if char in ('e', 'E'):
+                        index += 1
+                        if index < len(string) and string[index] in ('+', '-'):
+                            index += 1
+                        continue
+                    if is_digit(char) or char in ('_', 'b', 'o', 'x', 'u', 'i', 'f'):
+                        index += 1
                         continue
                     if char == '.':
                         if found_dot:
@@ -138,6 +143,7 @@ class Tokens(MutableSequence[Token]):
                         ):
                             break
                         found_dot = True
+                        index += 1
                         continue
                     break
 
@@ -236,7 +242,7 @@ class Tokens(MutableSequence[Token]):
                 elif parse_str_literal():
                     pass
                 else:
-                    raise ValueError(f"Invalid syntax near {string[max(index - 4, 0):index + 5]!r}")
+                    raise ValueError(f"Invalid syntax near {string[max(index - 8, 0):index + 9]!r}")
 
         def process_one(item: CoerceToTokens):
             match item:
