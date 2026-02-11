@@ -6,7 +6,7 @@ use std::rc::Rc;
 #[derive(Debug)]
 pub(crate) struct PyStmt {
     pub newline: Option<LineColumn>,
-    pub marker: Rc<Punct>,
+    pub _marker: Rc<Punct>,
     pub tokens: Rc<[Token]>,
 }
 
@@ -50,7 +50,7 @@ pub(crate) struct RustCodeWithBlock {
 #[derive(Debug)]
 pub(crate) struct PyStmtWithIndentBlock {
     pub stmt: PyStmt,
-    pub group: Rc<Group>,
+    pub _group: Rc<Group>,
     pub block: Box<[CodeRegion]>,
 }
 
@@ -119,8 +119,8 @@ impl_code_region_from_inner!(PyStmtWithIndentBlock, PyStmtWithIndentBlock);
 
 pub(crate) mod parser {
     use super::{CodeRegion, PyExpr, PyStmt, PyStmtWithIndentBlock, RustCode, RustCodeWithBlock};
-    use crate::rust_to_py::utils::TokenBufferEx;
     use crate::rust_to_py::CONCAT_MARKER;
+    use crate::rust_to_py::utils::TokenBufferEx;
     use crate::utils::match_unwrap;
     use crate::utils::rust_token::{Token, TokenBuffer};
     use either::Either;
@@ -162,6 +162,16 @@ pub(crate) mod parser {
             let mut py_tokens = Vec::new();
 
             loop {
+                if tokens.peek(-1).unwrap().eq_punct(';')
+                    || tokens.current().map(Token::is_newline).unwrap_or(true)
+                {
+                    return Some(ParsePyResult::Stmt(PyStmt {
+                        newline,
+                        _marker: start,
+                        tokens: py_tokens.into(),
+                    }));
+                }
+
                 if tokens.is_py_marker_end() {
                     if let Some(_) = newline {
                         // PyExpr can't start with a newline, rewind token buffer and return None
@@ -183,21 +193,11 @@ pub(crate) mod parser {
                     return Some(ParsePyResult::StmtWithIndentBlock(PyStmtWithIndentBlock {
                         stmt: PyStmt {
                             newline,
-                            marker: start,
+                            _marker: start,
                             tokens: py_tokens.into(),
                         },
-                        group,
+                        _group: group,
                         block: CodeRegionParser::new().parse(group_tokens).into(),
-                    }));
-                }
-
-                if tokens.peek(-1).unwrap().eq_punct(';')
-                    || tokens.current().map(Token::is_newline).unwrap_or(true)
-                {
-                    return Some(ParsePyResult::Stmt(PyStmt {
-                        newline,
-                        marker: start,
-                        tokens: py_tokens.into(),
                     }));
                 }
 

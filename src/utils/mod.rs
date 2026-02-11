@@ -34,3 +34,21 @@ macro_rules! match_unwrap {
     }};
 }
 pub(crate) use match_unwrap;
+
+// pub(crate) trait FloatEx: Sized {
+//     fn finite(self) -> Option<Self>;
+// }
+// macro_rules! impl_float_ex {
+//     ($typ:ty) => {
+//         impl FloatEx for $typ {
+//             fn finite(self) -> Option<Self> {
+//                 match self.is_finite() {
+//                     true => Some(self),
+//                     false => None,
+//                 }
+//             }
+//         }
+//     };
+// }
+// impl_float_ex!(f32);
+// impl_float_ex!(f64);

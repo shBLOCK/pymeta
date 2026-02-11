@@ -16,10 +16,11 @@ proc-macro-error2 = { version = "2.0.1", default-features = false }
 quote = "1.0.44"
 #syn = "2.0.114"
 
-rustpython-vm = { git = "https://github.com/RustPython/RustPython.git", tag = "2025-11-10-main-55" }
-#pyo3 = { version = "0.27.2" }
+#rustpython-vm = { git = "https://github.com/RustPython/RustPython.git", tag = "2025-11-10-main-55" }
+pyo3 = { version = "0.28.0" }
 
 either = "1.15.0"
+unicode-ident = "1.0.23"
 
 log = { version = "0.4.29", optional = true }
 env_logger = { version = "0.11.8", optional = true }

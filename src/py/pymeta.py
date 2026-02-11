@@ -5,16 +5,20 @@ from typing import SupportsInt, SupportsFloat, final, Collection, Final, Support
     Any, Iterable
 
 import _pymeta
+from _pymeta import Span
 
 
-@final
-class Span:  # TODO: make this a Rust native class
-    @classmethod
-    def call_site(cls) -> Span:
-        return Span()  # TODO
-
-    def __repr__(self):
-        return f"{self.__class__.__name__}(TODO)"  # TODO
+__all__ = (
+    "Span",
+    "Token",
+    "Tokens",
+    "Group", "Punct", "Ident",
+    "Literal", "IntLiteral", "FloatLiteral", "StrLiteral", "BytesLiteral",
+    "u8", "u16", "u32", "u64", "u128", "usize", "i8", "i16", "i32", "i64", "i128", "isize",
+    "f32", "f64",
+    "lit",
+    "rust",
+)
 
 
 class Token(ABC):
@@ -31,8 +35,11 @@ class Token(ABC):
     @abstractmethod
     def __repr__(self): ...
 
+    @abstractmethod
+    def _append_to_tokenstream(self, stream: _pymeta.TokenStream): ...
 
-type CoerceToTokens = Token | Template | str | int | float | bytes | bytearray | memoryview[Any] | tuple | list
+
+type CoerceToTokens = Token | Template | str | int | float | (bytes | bytearray | memoryview[Any]) | (tuple | list)
 
 @final
 class Tokens(MutableSequence[Token]):
@@ -207,7 +214,7 @@ class Tokens(MutableSequence[Token]):
                 return True
 
             while index < len(string):
-                char = string[index:index + 2]
+                char = string[index]
                 if char.isspace():
                     index += 1
                 elif char in "([{":
@@ -332,9 +339,11 @@ class Tokens(MutableSequence[Token]):
     def __reversed__(self):
         raise NotImplementedError
 
-
-# noinspection PyProtectedMember
-Tokens._CTX_STACK.append(Tokens())
+    def _to_tokenstream(self) -> _pymeta.TokenStream:
+        stream = _pymeta.TokenStream()
+        for token in self:
+            token._append_to_tokenstream(stream)
+        return stream
 
 
 @final
@@ -381,23 +390,29 @@ class Group(Token):
     def __exit__(self, *_):
         self.tokens.__exit__()
 
+    def _append_to_tokenstream(self, stream: _pymeta.TokenStream):
+        stream.append_group(self.delimiter, self.tokens._to_tokenstream(), self.span)
+
 
 @final
 class Ident(Token):
-    __slots__ = ("value",)
-    __match_args__ = ("value",)
+    __slots__ = ("string",)
+    __match_args__ = ("string",)
 
-    value: str
+    string: str
 
-    def __init__(self, value: str, span: Span | None = None):
+    def __init__(self, string: str, span: Span | None = None):
         super().__init__(span)
-        self.value = value
+        self.string = string
 
     def __str__(self):
-        return self.value
+        return self.string
 
     def __repr__(self):
-        return f"{self.__class__.__name__}({self.value!r}, {self.span!r})"
+        return f"{self.__class__.__name__}({self.string!r}, {self.span!r})"
+
+    def _append_to_tokenstream(self, stream: _pymeta.TokenStream):
+        stream.append_ident(self.string, self.span)
 
 
 @final
@@ -406,27 +421,34 @@ class Punct(Token):
     ALONE: Final[str] = "alone"
     JOINT: Final[str] = "joint"
 
-    __slots__ = ("value", "spacing")
-    __match_args__ = ("value", "spacing")
+    __slots__ = ("chars", "spacing")
+    __match_args__ = ("chars", "spacing")
 
-    value: str
+    chars: str
     spacing: str
 
-    def __init__(self, value: str, spacing: str = ALONE, span: Span | None = None):
+    def __init__(self, chars: str, spacing: str = ALONE, span: Span | None = None):
         super().__init__(span)
-        for c in value:
+        for c in chars:
             if c not in Punct.CHARS:
                 raise ValueError(f"Invalid punctuation char '{c}'")
-        self.value = value
+        self.chars = chars
         if spacing not in (Punct.ALONE, Punct.JOINT):
             raise ValueError(f"Invalid punctuation spacing type: \"{spacing}\"")
         self.spacing = spacing
 
     def __str__(self):
-        return self.value
+        return self.chars
 
     def __repr__(self):
-        return f"{self.__class__.__name__}({self.value!r}, {self.span!r})"
+        return f"{self.__class__.__name__}({self.chars!r}, {self.span!r})"
+
+    def _append_to_tokenstream(self, stream: _pymeta.TokenStream):
+        if len(self.chars) == 0:
+            raise ValueError("Punct token is empty")
+        for char in self.chars[:-1]:
+            stream.append_punct(char, Punct.JOINT, self.span)
+        stream.append_punct(self.chars[-1], self.spacing, self.span)
 
 
 class Literal[T](Token, ABC):
@@ -456,6 +478,9 @@ class IntLiteral(Literal[int]):
 
     def __repr__(self):
         return f"{self.__class__.__name__}({self.value!r}, \"{self.suffix}\", {self.span!r})"
+
+    def _append_to_tokenstream(self, stream: _pymeta.TokenStream):
+        stream.append_int_literal(self.value, self.suffix, self.span)
 
 # @formatter:off
 def u8(value: SupportsInt, span: Span | None = None) -> IntLiteral:
@@ -505,6 +530,9 @@ class FloatLiteral(Literal[float]):
     def __repr__(self):
         return f"{self.__class__.__name__}({self.value!r}, \"{self.suffix}\", {self.span!r})"
 
+    def _append_to_tokenstream(self, stream: _pymeta.TokenStream):
+        stream.append_float_literal(self.value, self.suffix, self.span)
+
 def f32(value: SupportsFloat, span: Span | None = None) -> FloatLiteral:
     return FloatLiteral(value, "f32", span)
 
@@ -536,6 +564,9 @@ class StrLiteral(Literal[str]):
     def __repr__(self):
         return f"{self.__class__.__name__}({self.value!r}, \"{self.type}\", {self.span!r})"
 
+    def _append_to_tokenstream(self, stream: _pymeta.TokenStream):
+        stream.append_str_literal(self.type, self.value, self.span)
+
 
 class BytesLiteral(Literal[bytes]):
     BYTE: Final[str] = "byte"
@@ -560,6 +591,9 @@ class BytesLiteral(Literal[bytes]):
 
     def __repr__(self):
         return f"{self.__class__.__name__}({self.value!r}, \"{self.type}\", {self.span!r})"
+
+    def _append_to_tokenstream(self, stream: _pymeta.TokenStream):
+        stream.append_bytes_literal(self.type, self.value, self.span)
 
 
 # @formatter:off

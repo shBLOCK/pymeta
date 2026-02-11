@@ -13,6 +13,12 @@ use std::rc::Rc;
 
 const INDENT_SIZE: usize = 4;
 
+#[derive(Debug)]
+pub(crate) struct PyMetaExecutable {
+    pub source: PySource,
+    pub spans: Box<[Rc<CSpan>]>,
+}
+
 pub(crate) struct PyCodeGen {
     py: PySourceBuilder,
     spans: Vec<Rc<CSpan>>,
@@ -101,7 +107,7 @@ impl PyCodeGen {
                     ));
                 }
                 Token::NewLine(lc) => self.py.new_line(Some(lc.column)),
-                Token::Spaces(_) => {}
+                Token::Spaces(_) => self.py.append(PySegment::new(" ", None)),
             }
             tokens.seek(1).unwrap();
         }
@@ -123,7 +129,7 @@ impl PyCodeGen {
         self.spans.push(span.clone());
         let id = self.spans.len() - 1;
         self.py
-            .append(PySegment::new(format!("__span({id})"), Some(span)))
+            .append(PySegment::new(format!("__spans[{id}]"), Some(span)))
     }
 
     fn append_inline_py_expr(&mut self, expr: &PyExpr) {
@@ -167,7 +173,9 @@ impl PyCodeGen {
                 }
             }
         }
-        self.py.append(PySegment::new("\"", Some(full_span)));
+        self.py.append(PySegment::new("\", ", None));
+        self.append_span(Rc::clone(&full_span));
+        self.py.append(PySegment::new(")", Some(full_span)));
     }
 
     fn append_rust_code_as_parameter_list_element(&mut self, code: &RustCode) {
@@ -187,8 +195,12 @@ impl PyCodeGen {
                         "'" => "\\'",
                         c => c,
                     };
+                    let spacing = match punct.inner().spacing() {
+                        Spacing::Alone => "alone",
+                        Spacing::Joint => "joint",
+                    };
                     self.py.append(PySegment::new(
-                        format!(r#"Punct('{char_str}', "#),
+                        format!(r#"Punct('{char_str}', "{spacing}", "#),
                         Some(punct.span()),
                     ));
                     self.append_span(punct.span());
@@ -312,7 +324,10 @@ impl PyCodeGen {
         regions.for_each(|region| self.append_code_region(region));
     }
 
-    pub fn finish(self) -> PySource {
-        self.py.finish()
+    pub fn finish(self) -> PyMetaExecutable {
+        PyMetaExecutable {
+            source: self.py.finish(),
+            spans: self.spans.into_boxed_slice(),
+        }
     }
 }
