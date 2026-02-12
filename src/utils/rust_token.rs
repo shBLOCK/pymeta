@@ -1,4 +1,3 @@
-use crate::utils::logging::warn;
 use proc_macro2::{Delimiter, LineColumn, Span, TokenTree};
 use std::cell::OnceCell;
 use std::fmt::{Debug, Formatter};
@@ -83,11 +82,7 @@ impl Group {
 impl From<proc_macro2::Group> for Group {
     fn from(value: proc_macro2::Group) -> Self {
         // TODO: check if this works properly when group delimiter is Delimiter::None
-        let tokens = Token::tokens_from(
-            value.stream(),
-            Some(value.span_open().end()),
-            Some(value.span_close().start()),
-        );
+        let tokens = Token::tokens_from(value.stream());
         Self {
             group: value,
             span: OnceCell::new(),
@@ -152,23 +147,14 @@ delegate_token_struct_common!(Literal, literal);
 
 /// Extended version of [TokenTree].
 ///
-/// Most notably, adding the semi-tokens [Self::NewLine] and [Self::Spaces].
+/// Originally this contained `NewLine` and `Spaces` tokens derived from the [Span] information.
+/// But [Span] information may not always be reliable, so these have been removed.
 #[derive(Clone)]
 pub(crate) enum Token {
     Ident(Rc<Ident>),
     Punct(Rc<Punct>),
     Literal(Rc<Literal>),
     Group(Rc<Group>),
-
-    /// Represents the start of a new line.
-    ///
-    /// May not be generated if [Span] position information is not available.
-    NewLine(LineColumn),
-
-    /// Represents n spaces between the previous and next token.
-    ///
-    /// May not be generated if [Span] position information is not available.
-    Spaces(usize),
 }
 
 macro_rules! token_get_token_struct_fn {
@@ -184,13 +170,12 @@ macro_rules! token_get_token_struct_fn {
 }
 
 impl Token {
-    pub fn span(&self) -> Option<Rc<CSpan>> {
+    pub fn span(&self) -> Rc<CSpan> {
         match self {
-            Self::Ident(ident) => Some(ident.span()),
-            Self::Punct(punct) => Some(punct.span()),
-            Self::Literal(literal) => Some(literal.span()),
-            Self::Group(group) => Some(group.span()),
-            _ => None,
+            Self::Ident(ident) => ident.span(),
+            Self::Punct(punct) => punct.span(),
+            Self::Literal(literal) => literal.span(),
+            Self::Group(group) => group.span(),
         }
     }
 
@@ -198,27 +183,6 @@ impl Token {
     token_get_token_struct_fn!(Punct, punct);
     token_get_token_struct_fn!(Literal, literal);
     token_get_token_struct_fn!(Group, group);
-
-    pub fn newline(&self) -> Option<LineColumn> {
-        match self {
-            Self::NewLine(lc) => Some(*lc),
-            _ => None,
-        }
-    }
-
-    pub fn is_newline(&self) -> bool {
-        match self {
-            Self::NewLine(_) => true,
-            _ => false,
-        }
-    }
-
-    pub fn is_whitespace(&self) -> bool {
-        match self {
-            Self::Spaces(_) | Self::NewLine(_) => true,
-            _ => false,
-        }
-    }
 
     pub fn eq_punct(&self, ch: char) -> bool {
         match self {
@@ -247,58 +211,8 @@ impl From<TokenTree> for Token {
 }
 
 impl Token {
-    fn tokens_from(
-        iter: impl IntoIterator<Item = TokenTree>,
-        start_pos: Option<LineColumn>,
-        end_pos: Option<LineColumn>,
-    ) -> Vec<Self> {
-        let mut tokens = Vec::new();
-
-        let mut last_line = start_pos.map(|lc| lc.line);
-        let mut last_column = start_pos.map(|lc| lc.column);
-
-        let mut insert_spacing_tokens =
-            |tokens: &mut Vec<Token>, start: LineColumn, end: LineColumn| {
-                if Some(start.line) != last_line {
-                    // add NewLine tokens
-                    if let Some(last_line) = last_line {
-                        for line in (last_line + 1)..start.line {
-                            tokens.push(Token::NewLine(LineColumn { line, column: 0 }));
-                        }
-                    }
-                    tokens.push(Token::NewLine(LineColumn {
-                        line: start.line,
-                        column: start.column,
-                    }));
-                } else if let Some(last_column) = last_column {
-                    // add Spaces token
-                    let spaces = start.column.checked_sub(last_column).unwrap_or_else(|| {
-                        warn!(
-                            "Found negative number of spaces between tokens: from {} to {}",
-                            last_column, start.column
-                        );
-                        0
-                    });
-                    if spaces > 0 {
-                        tokens.push(Token::Spaces(spaces));
-                    }
-                }
-
-                last_line = Some(end.line);
-                last_column = Some(end.column);
-            };
-
-        for tt in iter {
-            let token = Token::from(tt);
-            let span = token.span().unwrap();
-            insert_spacing_tokens(&mut tokens, span.start(), span.end());
-            tokens.push(token);
-        }
-        if let Some(end_pos) = end_pos {
-            insert_spacing_tokens(&mut tokens, end_pos, end_pos);
-        }
-
-        tokens
+    fn tokens_from(iter: impl IntoIterator<Item = TokenTree>) -> Vec<Self> {
+        iter.into_iter().map(Token::from).collect()
     }
 }
 
@@ -309,8 +223,6 @@ impl Debug for Token {
             Self::Punct(punct) => punct.fmt(f),
             Self::Literal(literal) => literal.fmt(f),
             Self::Group(group) => group.fmt(f),
-            Self::NewLine(lc) => f.debug_tuple("NewLine").field(lc).finish(),
-            Self::Spaces(n) => f.debug_tuple("Spaces").field(n).finish(),
         }
     }
 }
@@ -351,10 +263,12 @@ impl TokenBuffer {
         self.tokens.get(self.pos.checked_add_signed(offset)?)
     }
 
+    #[allow(unused)]
     pub fn pos(&self) -> usize {
         self.pos
     }
 
+    #[allow(unused)]
     pub fn set_pos(&mut self, pos: usize) -> Result<(), ()> {
         if pos > self.tokens.len() {
             return Err(());
@@ -371,7 +285,7 @@ impl TokenBuffer {
 impl FromIterator<TokenTree> for TokenBuffer {
     fn from_iter<T: IntoIterator<Item = TokenTree>>(iter: T) -> Self {
         Self {
-            tokens: Rc::from(Token::tokens_from(iter, None, None)),
+            tokens: Rc::from(Token::tokens_from(iter)),
             pos: 0,
         }
     }

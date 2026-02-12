@@ -1,12 +1,12 @@
-use crate::rust_to_py::PY_MARKER_STR;
 use crate::rust_to_py::code_regions::{
     CodeRegion, IdentWithPyExpr, PyExpr, PyStmt, PyStmtWithIndentBlock, RustCode, RustCodeWithBlock,
 };
 use crate::rust_to_py::utils::{DelimiterEx, PunctEx, TokenBufferEx};
-use crate::utils::SpanEx;
+use crate::rust_to_py::PY_MARKER_STR;
 use crate::utils::py_source::builder::PySourceBuilder;
 use crate::utils::py_source::{PySegment, PySource};
 use crate::utils::rust_token::{CSpan, Literal, Token, TokenBuffer};
+use crate::utils::SpanEx;
 use either::Either;
 use proc_macro2::Spacing;
 use std::rc::Rc;
@@ -41,10 +41,6 @@ impl PyCodeGen {
             // For now, this works with escapes and special patterns.
             // If more complicated patterns are added in the future, how decide if to insert space may need to be changed.
             match (last, current) {
-                // before/after whitespace
-                (Some(Token::NewLine(_) | Token::Spaces(_)) | None, _) => false,
-                (_, Token::NewLine(_) | Token::Spaces(_)) => false,
-
                 // between ident and literal
                 (
                     Some(Token::Ident(_) | Token::Literal(_)),
@@ -106,15 +102,13 @@ impl PyCodeGen {
                         Some(group.span()),
                     ));
                 }
-                Token::NewLine(lc) => self.py.new_line(Some(lc.column)),
-                Token::Spaces(_) => self.py.append(PySegment::new(" ", None)),
             }
             tokens.seek(1).unwrap();
         }
     }
 
     fn append_py_logical_line(&mut self, line: &PyStmt) {
-        self.py.new_line(line.newline.map(|line| line.column));
+        self.py.new_line(None);
         self.append_tokens_as_python_code(TokenBuffer::from(&line.tokens));
     }
 
@@ -217,10 +211,6 @@ impl PyCodeGen {
                     self.py.append(PySegment::new(", ", None));
                 }
                 Token::Group(_) => unreachable!(),
-                Token::NewLine(newline) => {
-                    self.py.new_line(Some(newline.column));
-                }
-                Token::Spaces(_) => {}
             },
             RustCode::Group { group, code } => {
                 self.py.append(PySegment::new(
@@ -249,26 +239,14 @@ impl PyCodeGen {
     }
 
     fn append_rust_code_region(&mut self, region: &Vec<RustCode>) {
-        let mut region = &region[..];
-        if region.is_empty() {
+        let region = &region[..];
+        if region.is_empty() { // TODO: this doesn't seem to happen
             self.py.new_line(None);
             self.py.append(PySegment::new("pass", None));
             return;
         }
 
-        if let RustCode::Code(Token::NewLine(newline)) = region[0] {
-            // this region starts with a newline, so we know the indent level from the newline
-            self.py.new_line(Some(newline.column));
-            region = &region[1..];
-            if region.is_empty() {
-                // special case: this region only have a newline
-                return;
-            }
-        } else {
-            // this region doesn't start with a newline,
-            // we treat it as an indent block so it follows the previous indent in Python source
-            self.py.new_line(None);
-        }
+        self.py.new_line(None);
 
         self.py.append(PySegment::new("rust(", None));
         region
@@ -278,17 +256,9 @@ impl PyCodeGen {
     }
 
     fn append_rust_multiline_block(&mut self, region: &RustCodeWithBlock) {
-        let mut region_code = region.code.as_ref();
+        let region_code = region.code.as_ref();
 
-        if let RustCode::Code(Token::NewLine(newline)) = region_code[0] {
-            // this region starts with a newline, so we know the indent level from the newline
-            self.py.new_line(Some(newline.column));
-            region_code = &region_code[1..];
-        } else {
-            // this region doesn't start with a newline,
-            // we treat it as an indent block so it follows the previous indent in Python source
-            self.py.new_line(None); // TODO: maybe do better indent handling to have prettier Python code. This is a very special case though, so maybe not worth it.
-        }
+        self.py.new_line(None);
 
         self.py.append(PySegment::new("with rust(", None));
         region_code

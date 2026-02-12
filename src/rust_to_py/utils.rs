@@ -37,18 +37,10 @@ impl PunctEx for Punct {
 }
 
 pub(super) trait TokenOptionEx {
-    fn is_whitespace(&self) -> bool;
     fn eq_punct(&self, c: char) -> bool;
     fn eq_group(&self, delimiter: Delimiter) -> bool;
 }
 impl TokenOptionEx for Option<&Token> {
-    fn is_whitespace(&self) -> bool {
-        match self {
-            Some(token) => token.is_whitespace(),
-            None => true,
-        }
-    }
-
     fn eq_punct(&self, c: char) -> bool {
         match self {
             Some(t) => t.eq_punct(c),
@@ -84,8 +76,8 @@ impl TokenBufferEx for TokenBuffer {
     }
 
     fn py_marker_escape_span(&self) -> Rc<CSpan> {
-        let start = self.current().unwrap().span().unwrap();
-        let end = self.peek(2).unwrap().span().unwrap();
+        let start = self.current().unwrap().span();
+        let end = self.peek(2).unwrap().span();
         start
             .inner()
             .join(end.inner())
@@ -99,13 +91,11 @@ impl TokenBufferEx for TokenBuffer {
 
     fn is_py_marker_start(&self) -> bool {
         self.current().eq_punct(PY_MARKER)
-            && !self.peek(1).is_whitespace()
             && !self.is_current_py_marker_escaped()
     }
 
     fn is_py_marker_end(&self) -> bool {
         self.current().eq_punct(PY_MARKER)
-            && !self.peek(-1).is_whitespace()
             && !self.is_current_py_marker_escaped()
     }
 

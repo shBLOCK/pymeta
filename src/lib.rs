@@ -4,9 +4,8 @@ extern crate proc_macro;
 
 use crate::rust_to_py::code_regions::parser::CodeRegionParser;
 use crate::rust_to_py::py_code_gen::PyCodeGen;
-use proc_macro_error2::{abort, abort_call_site};
 use proc_macro2::TokenStream;
-use quote::quote;
+use proc_macro_error2::abort_call_site;
 use utils::rust_token::TokenBuffer;
 
 mod py;

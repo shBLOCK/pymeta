@@ -29,17 +29,6 @@ struct PyLine {
 }
 
 impl PyLine {
-    fn new(indent: usize) -> Self {
-        Self {
-            segments: Vec::new(),
-            indent,
-        }
-    }
-
-    fn append(&mut self, segment: PySegment) {
-        self.segments.push(segment);
-    }
-
     fn is_empty(&self) -> bool {
         self.segments.is_empty()
     }

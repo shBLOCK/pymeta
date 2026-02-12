@@ -1,11 +1,9 @@
 use crate::utils::rust_token::{Group, Ident, Punct, Token};
 use either::Either;
-use proc_macro2::LineColumn;
 use std::rc::Rc;
 
 #[derive(Debug)]
 pub(crate) struct PyStmt {
-    pub newline: Option<LineColumn>,
     pub _marker: Rc<Punct>,
     pub tokens: Rc<[Token]>,
 }
@@ -56,19 +54,16 @@ pub(crate) struct PyStmtWithIndentBlock {
 
 #[derive(Debug)]
 pub(crate) enum CodeRegion {
-    /// Some Rust code. Can be multi-line, but **can not** contain non-inline Python code.
+    /// Some Rust code. **Can not** contain non-inline Python code.
     ///
     /// This is turned into one `rust()` call in the generated Python code.
     ///
-    /// A continuous region of Rust code is broken up into a number of these
+    /// A continuous region of Rust code may be broken up into a number of these
     /// to make the resulting Python code more readable.
     RustCode(Vec<RustCode>),
 
-    /// Some Rust code followed by a multi-line block ([Group]).
+    /// Some Rust code followed by a block ([Group]).
     /// The block may contain Python code, both inline and non-inline ones.
-    ///
-    /// Rust code with multi-line blocks doesn't necessarily need to become this (instead of [Self::RustCode]),
-    /// unless the blocks contain non-inline Python.
     ///
     /// This is turned into a `with rust():` block in Python.
     /// Using context manager allows any Python code contained within this to work properly,
@@ -124,6 +119,7 @@ pub(crate) mod parser {
     use crate::utils::match_unwrap;
     use crate::utils::rust_token::{Token, TokenBuffer};
     use either::Either;
+    use proc_macro_error2::abort;
     use std::rc::Rc;
 
     pub(crate) struct CodeRegionParser {
@@ -144,40 +140,22 @@ pub(crate) mod parser {
         }
 
         fn parse_py(tokens: &mut TokenBuffer) -> Option<ParsePyResult> {
-            let rewind_pos = tokens.pos();
-
-            let newline = if tokens.current()?.is_newline() {
-                if !tokens.seeked(1)?.is_py_marker_start() {
-                    return None;
-                }
-                Some(tokens.read_one().unwrap().newline().unwrap())
-            } else {
-                if !tokens.is_py_marker_start() {
-                    return None;
-                }
-                None
-            };
+            if !tokens.is_py_marker_start() {
+                return None;
+            }
             let start = tokens.read_one().unwrap().punct().unwrap();
 
             let mut py_tokens = Vec::new();
 
             loop {
-                if tokens.peek(-1).unwrap().eq_punct(';')
-                    || tokens.current().map(Token::is_newline).unwrap_or(true)
-                {
+                if tokens.peek(-1).unwrap().eq_punct(';') {
                     return Some(ParsePyResult::Stmt(PyStmt {
-                        newline,
                         _marker: start,
                         tokens: py_tokens.into(),
                     }));
                 }
 
                 if tokens.is_py_marker_end() {
-                    if let Some(_) = newline {
-                        // PyExpr can't start with a newline, rewind token buffer and return None
-                        tokens.set_pos(rewind_pos).unwrap();
-                        return None;
-                    }
                     let end = tokens.read_one().unwrap().punct().unwrap();
                     return Some(ParsePyResult::Expr(PyExpr {
                         start_marker: start,
@@ -192,7 +170,6 @@ pub(crate) mod parser {
                     let group_tokens = group.tokens();
                     return Some(ParsePyResult::StmtWithIndentBlock(PyStmtWithIndentBlock {
                         stmt: PyStmt {
-                            newline,
                             _marker: start,
                             tokens: py_tokens.into(),
                         },
@@ -201,7 +178,13 @@ pub(crate) mod parser {
                     }));
                 }
 
-                py_tokens.push(tokens.read_one().unwrap().clone());
+                let Some(token) = tokens.read_one() else {
+                    abort!(
+                        tokens.peek(-1).unwrap().span().inner().unwrap().end(),
+                        "Incomplete Python segment."
+                    );
+                };
+                py_tokens.push(token.clone())
             }
         }
 
@@ -251,11 +234,6 @@ pub(crate) mod parser {
                 } else {
                     let token = tokens.read_one().unwrap();
                     match token {
-                        #[cfg(feature = "pretty")]
-                        newline @ Token::NewLine(_) => {
-                            self.regions
-                                .push(CodeRegion::RustCode(vec![RustCode::Code(newline.clone())]));
-                        }
                         Token::Group(group) => {
                             let group_regions = Self::new().parse(group.tokens());
                             if group_regions
@@ -298,7 +276,8 @@ pub(crate) mod parser {
                             self.get_or_put_rust_code_region()
                                 .push(RustCode::Code(token.clone()));
 
-                            #[cfg(feature = "pretty")]
+                            // start a new region on semicolons to make the resulting Python code more readable
+                            //TODO: only do this for braces, or only when the region is too long
                             if token.eq_punct(';') {
                                 self.regions.push(CodeRegion::RustCode(Vec::new()));
                             }
