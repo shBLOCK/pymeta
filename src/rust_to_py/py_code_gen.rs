@@ -115,7 +115,12 @@ impl PyCodeGen {
     fn append_py_stmt_with_indent_block(&mut self, region: &PyStmtWithIndentBlock) {
         self.append_py_logical_line(&region.stmt);
         self.py.push_indent_block(INDENT_SIZE);
-        self.append_code_regions(region.block.iter());
+        if !region.block.is_empty() {
+            self.append_code_regions(region.block.iter());
+        } else {
+            self.py.new_line(None);
+            self.py.append(PySegment::new("pass", Some(region.group.span())));
+        }
         self.py.pop_indent_block();
     }
 
@@ -240,7 +245,7 @@ impl PyCodeGen {
 
     fn append_rust_code_region(&mut self, region: &Vec<RustCode>) {
         let region = &region[..];
-        if region.is_empty() { // TODO: this doesn't seem to happen
+        if region.is_empty() {
             self.py.new_line(None);
             self.py.append(PySegment::new("pass", None));
             return;

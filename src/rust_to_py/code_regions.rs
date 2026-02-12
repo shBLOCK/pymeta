@@ -48,7 +48,7 @@ pub(crate) struct RustCodeWithBlock {
 #[derive(Debug)]
 pub(crate) struct PyStmtWithIndentBlock {
     pub stmt: PyStmt,
-    pub _group: Rc<Group>,
+    pub group: Rc<Group>,
     pub block: Box<[CodeRegion]>,
 }
 
@@ -173,7 +173,7 @@ pub(crate) mod parser {
                             _marker: start,
                             tokens: py_tokens.into(),
                         },
-                        _group: group,
+                        group: group,
                         block: CodeRegionParser::new().parse(group_tokens).into(),
                     }));
                 }
