@@ -86,7 +86,7 @@ mod _pymeta {
     use pyo3::exceptions::PyValueError;
     use pyo3::prelude::*;
     use pyo3::types::{PyBytes, PyFloat, PyInt, PyString};
-    use std::ffi::CStr;
+    use std::ffi::CString;
     use std::iter;
     use std::rc::Rc;
     use unicode_ident::{is_xid_continue, is_xid_start};
@@ -294,7 +294,6 @@ mod _pymeta {
             let literal = match r#type {
                 "str" => Literal::string(value.to_str()?),
                 "chr" => Literal::character(value.extract::<char>()?),
-                "cstr" => Literal::c_string(value.extract::<&CStr>()?),
                 _ => {
                     return Err(PyValueError::new_err(format!(
                         "Invalid str literal type: \"{type}\""
@@ -322,6 +321,9 @@ mod _pymeta {
                     }
                     Literal::byte_character(bytes[0])
                 }
+                "cstr" => Literal::c_string(&CString::new(value.as_bytes()).map_err(|e| {
+                    PyValueError::new_err(format!("Invalid c string bytes: {e:?}"))
+                })?),
                 _ => {
                     return Err(PyValueError::new_err(format!(
                         "Invalid bytes literal type: {}",

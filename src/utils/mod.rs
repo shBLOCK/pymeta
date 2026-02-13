@@ -3,6 +3,7 @@ use proc_macro2::Span;
 pub(crate) mod logging;
 pub(crate) mod py_source;
 pub(crate) mod rust_token;
+pub(crate) mod escape;
 
 pub(crate) trait SpanOptionEx {
     fn join_or_fallback(self, other: Self) -> Span;
@@ -35,20 +36,31 @@ macro_rules! match_unwrap {
 }
 pub(crate) use match_unwrap;
 
-// pub(crate) trait FloatEx: Sized {
-//     fn finite(self) -> Option<Self>;
-// }
-// macro_rules! impl_float_ex {
-//     ($typ:ty) => {
-//         impl FloatEx for $typ {
-//             fn finite(self) -> Option<Self> {
-//                 match self.is_finite() {
-//                     true => Some(self),
-//                     false => None,
-//                 }
-//             }
-//         }
-//     };
-// }
-// impl_float_ex!(f32);
-// impl_float_ex!(f64);
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+pub(crate) struct LineColumn {
+    /// 1-indexed
+    pub line: u32,
+    /// 0-indexed
+    pub column: u32,
+}
+
+#[cfg(feature = "nightly_proc_macro_span")]
+impl From<proc_macro2::LineColumn> for LineColumn {
+    fn from(value: proc_macro2::LineColumn) -> Self {
+        Self {
+            line: value.line as u32,
+            column: value.column as u32,
+        }
+    }
+}
+
+#[cfg(feature = "nightly_proc_macro_span")]
+impl From<LineColumn> for proc_macro2::LineColumn {
+    fn from(value: LineColumn) -> Self {
+        Self {
+            line: value.line as usize,
+            column: value.column as usize,
+        }
+    }
+}

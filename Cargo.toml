@@ -18,6 +18,7 @@ quote = "1.0.44"
 #rustpython-vm = { git = "https://github.com/RustPython/RustPython.git", tag = "2025-11-10-main-55" }
 pyo3 = { version = "0.28.0" }
 
+rustc-literal-escaper = "0.0.7"
 either = "1.15.0"
 unicode-ident = "1.0.23"
 

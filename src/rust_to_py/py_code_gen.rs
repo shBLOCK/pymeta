@@ -3,6 +3,7 @@ use crate::rust_to_py::code_regions::{
 };
 use crate::rust_to_py::utils::{DelimiterEx, PunctEx, TokenBufferEx};
 use crate::rust_to_py::PY_MARKER_STR;
+use crate::utils::escape::*;
 use crate::utils::py_source::builder::PySourceBuilder;
 use crate::utils::py_source::{PySegment, PySource};
 use crate::utils::rust_token::{CSpan, Literal, Token, TokenBuffer};
@@ -119,7 +120,8 @@ impl PyCodeGen {
             self.append_code_regions(region.block.iter());
         } else {
             self.py.new_line(None);
-            self.py.append(PySegment::new("pass", Some(region.group.span())));
+            self.py
+                .append(PySegment::new("pass", Some(region.group.span())));
         }
         self.py.pop_indent_block();
     }
@@ -207,15 +209,102 @@ impl PyCodeGen {
                     self.py.append(PySegment::new(", ", None));
                 }
                 Token::Literal(literal) => {
-                    self.py.append(PySegment::new(
-                        format!(r#"Literal("{}", "#, literal.inner().to_string()),
-                        Some(literal.span()),
-                    ));
+                    let repr = literal.inner().to_string();
+                    match repr.as_bytes() {
+                        [b'"', ..] | [b'r', b'"', ..] => {
+                            self.py
+                                .append(PySegment::new(r#"StrLiteral("#, Some(literal.span())));
+                            self.py.append(PySegment::new(
+                                rust_string_repr_to_python_str_repr(&repr),
+                                Some(literal.span()),
+                            ));
+                            self.py
+                                .append(PySegment::new(r#", "str", "#, Some(literal.span())));
+                        }
+                        [b'\'', ..] => {
+                            self.py.append(PySegment::new(
+                                format!(
+                                    r#"StrLiteral({}, "chr", "#,
+                                    rust_char_repr_to_python_str_repr(&repr)
+                                ),
+                                Some(literal.span()),
+                            ));
+                        }
+                        [b'b', b'"', ..] | [b'b', b'r', b'"', ..] => {
+                            self.py
+                                .append(PySegment::new(r#"BytesLiteral("#, Some(literal.span())));
+                            self.py.append(PySegment::new(
+                                rust_bytes_repr_to_python_bytes_repr(&repr),
+                                Some(literal.span()),
+                            ));
+                            self.py
+                                .append(PySegment::new(r#", "bytes", "#, Some(literal.span())));
+                        }
+                        [b'b', b'\'', ..] => {
+                            self.py.append(PySegment::new(
+                                format!(
+                                    r#"BytesLiteral({}, "byte", "#,
+                                    rust_byte_repr_to_python_bytes_repr(&repr)
+                                ),
+                                Some(literal.span()),
+                            ));
+                        }
+                        [b'c', ..] => {
+                            self.py
+                                .append(PySegment::new(r#"BytesLiteral("#, Some(literal.span())));
+                            self.py.append(PySegment::new(
+                                rust_c_string_repr_to_python_bytes_repr(&repr),
+                                Some(literal.span()),
+                            ));
+                            self.py
+                                .append(PySegment::new(r#", "cstr", "#, Some(literal.span())));
+                        }
+                        repr @ [b'0'..=b'9', ..] => {
+                            let is_float = match repr {
+                                [b'0', b'x', ..] => false,
+                                repr if repr
+                                    .iter()
+                                    .any(|b| matches!(b, b'.' | b'e' | b'E' | b'f')) =>
+                                {
+                                    true
+                                }
+                                _ => false,
+                            };
+
+                            let suffix_i = if is_float {
+                                repr.iter().rposition(|&b| b == b'f')
+                            } else {
+                                repr.iter().rposition(|&b| matches!(b, b'u' | b'i'))
+                            };
+                            let (num, type_obj) = match suffix_i {
+                                Some(i) => unsafe {
+                                    (
+                                        str::from_utf8_unchecked(&repr[..i]),
+                                        str::from_utf8_unchecked(&repr[i..]),
+                                    )
+                                },
+                                None => unsafe { (str::from_utf8_unchecked(repr), "None") },
+                            };
+
+                            let cls_name = if is_float {
+                                "FloatLiteral"
+                            } else {
+                                "IntLiteral"
+                            };
+
+                            self.py.append(PySegment::new(
+                                format!(r#"{cls_name}._new("{num}", {num}, {type_obj}, "#),
+                                Some(literal.span()),
+                            ));
+                        }
+                        _ => panic!("Failed to parse literal: {repr:?}"),
+                    };
+
                     self.append_span(literal.span());
                     self.py.append(PySegment::new(")", Some(literal.span())));
                     self.py.append(PySegment::new(", ", None));
                 }
-                Token::Group(_) => unreachable!(),
+                Token::Group(_) => unreachable!(), // should be handled by RustCode::Group
             },
             RustCode::Group { group, code } => {
                 self.py.append(PySegment::new(

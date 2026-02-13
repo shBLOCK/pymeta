@@ -39,7 +39,12 @@ class Token(ABC):
     def _append_to_tokenstream(self, stream: _pymeta.TokenStream): ...
 
 
-type CoerceToTokens = Token | Template | str | int | float | (bytes | bytearray | memoryview[Any]) | (tuple | list)
+type CoerceToTokens = (
+    Token
+    | Template | str
+    | int | float | bool | (bytes | bytearray | memoryview[Any])
+    | (tuple | list)
+)
 
 @final
 class Tokens(MutableSequence[Token]):
@@ -156,7 +161,7 @@ class Tokens(MutableSequence[Token]):
                     emit(IntLiteral(int(match.group("num")), match.group("suffix") or None))
                 # float
                 elif match := re.fullmatch(
-                    r"(?P<num>\d+\.\d*(?:[eE][+-]?\d+)?)(?P<suffix>f\d+)?",
+                    r"(?P<num>\d+(?:\.\d*)?(?:[eE][+-]?\d+)?)(?P<suffix>f\d+)?",
                     segment, flags=re.ASCII
                 ):
                     emit(FloatLiteral(float(match.group("num")), match.group("suffix") or None))
@@ -236,7 +241,14 @@ class Tokens(MutableSequence[Token]):
                     index += 1
                     while index < len(string) and _pymeta.is_ident_continue(string[index]):
                         index += 1
-                    emit(Ident(string[start:index]))
+                    ident = string[start:index]
+                    match ident:
+                        case "false":
+                            emit(BoolLiteral(False))
+                        case "true":
+                            emit(BoolLiteral(True))
+                        case _:
+                            emit(Ident(ident))
                 elif parse_number():
                     pass
                 elif parse_str_literal():
@@ -252,6 +264,8 @@ class Tokens(MutableSequence[Token]):
                     emit(IntLiteral(value))
                 case float(value):
                     emit(FloatLiteral(value))
+                case bool(value):
+                    emit(BoolLiteral(value))
                 case bytes(bts) | bytearray(bts) | memoryview(bts):
                     emit(BytesLiteral(bts))
                 case tuple(tup):
@@ -458,7 +472,7 @@ class Punct(Token):
 
 
 class Literal[T](Token, ABC):
-    __slots__ = ("value",)
+    __slots__ = ("value", "repr")
     __match_args__ = ("value",)
 
     value: T
@@ -466,90 +480,148 @@ class Literal[T](Token, ABC):
 
 @final
 class IntLiteral(Literal[int]):
-    SUFFIXES: Final[Collection[str]] = tuple(a + b for a in "ui" for b in ("8", "16", "32", "64", "128", "size"))
+    @final
+    class Type:
+        __slots__ = ("suffix", "signed")
 
-    __slots__ = ("suffix",)
+        _TYPES = {}
 
-    suffix: str | None
+        @overload
+        def __new__(cls, suffix: str) -> Self: ...
 
-    def __init__(self, value: SupportsInt, suffix: str | None = None, span: Span | None = None):
+        @overload
+        def __new__(cls, suffix: str, signed: bool) -> Self: ...
+
+        def __new__(cls, suffix: str, signed: bool | None = None) -> Self:
+            obj = cls._TYPES.get(suffix)
+            if obj is None:
+                obj = super().__new__(cls)
+                obj.suffix = suffix
+                obj.signed = signed
+                cls._TYPES[suffix] = obj
+            return obj
+
+        def __call__(self, value: SupportsInt, span: Span | None = None):
+            return IntLiteral(value, self, span)
+
+        def __repr__(self):
+            return self.suffix
+
+    __slots__ = ("repr", "type")
+
+    repr: str | None
+    type: Type | None
+
+    @classmethod
+    def _new(cls, repr: str, value: int, type: Type | None, span: Span) -> Self:
+        """For use from generated code only."""
+        obj = cls.__new__(cls)
+        obj.repr = repr
+        obj.value = value
+        obj.type = type
+        obj.span = span
+        return obj
+
+    def __init__(self, value: SupportsInt, type: Type | str | None = None, span: Span | None = None):
         super().__init__(span)
         self.value = int(value)
-        if suffix is not None and suffix not in IntLiteral.SUFFIXES:
-            raise ValueError(f"invalid {self.__class__.__name__} suffix \"{suffix}\"")
-        self.suffix = suffix
+        if isinstance(type, str):
+            type = IntLiteral.Type(type)
+        self.type = type
 
     def __str__(self):
-        return f"{self.value}{self.suffix or ""}"
+        return f"{self.repr or self.value}{self.type or ""}"
 
     def __repr__(self):
-        return f"{self.__class__.__name__}({self.value!r}, \"{self.suffix}\", {self.span!r})"
+        return f"{self.__class__.__name__}({self.repr or self.value}, {self.type}, {self.span!r})"
 
     def _append_to_tokenstream(self, stream: _pymeta.TokenStream):
-        stream.append_int_literal(self.value, self.suffix, self.span)
+        stream.append_int_literal(self.value, str(self.type) if self.type else None, self.span)
 
 # @formatter:off
-def u8(value: SupportsInt, span: Span | None = None) -> IntLiteral:
-    return IntLiteral(value, "u8", span)
-def u16(value: SupportsInt, span: Span | None = None) -> IntLiteral:
-    return IntLiteral(value, "u16", span)
-def u32(value: SupportsInt, span: Span | None = None) -> IntLiteral:
-    return IntLiteral(value, "u32", span)
-def u64(value: SupportsInt, span: Span | None = None) -> IntLiteral:
-    return IntLiteral(value, "u64", span)
-def u128(value: SupportsInt, span: Span | None = None) -> IntLiteral:
-    return IntLiteral(value, "u128", span)
-def usize(value: SupportsInt, span: Span | None = None) -> IntLiteral:
-    return IntLiteral(value, "usize", span)
-def i8(value: SupportsInt, span: Span | None = None) -> IntLiteral:
-    return IntLiteral(value, "i8", span)
-def i16(value: SupportsInt, span: Span | None = None) -> IntLiteral:
-    return IntLiteral(value, "i16", span)
-def i32(value: SupportsInt, span: Span | None = None) -> IntLiteral:
-    return IntLiteral(value, "i32", span)
-def i64(value: SupportsInt, span: Span | None = None) -> IntLiteral:
-    return IntLiteral(value, "i64", span)
-def i128(value: SupportsInt, span: Span | None = None) -> IntLiteral:
-    return IntLiteral(value, "i128", span)
-def isize(value: SupportsInt, span: Span | None = None) -> IntLiteral:
-    return IntLiteral(value, "isize", span)
+u8 = IntLiteral.Type("u8", False)
+u16 = IntLiteral.Type("u16", False)
+u32 = IntLiteral.Type("u32", False)
+u64 = IntLiteral.Type("u64", False)
+u128 = IntLiteral.Type("u128", False)
+usize = IntLiteral.Type("usize", False)
+i8 = IntLiteral.Type("i8", True)
+i16 = IntLiteral.Type("i16", True)
+i32 = IntLiteral.Type("i32", True)
+i64 = IntLiteral.Type("i64", True)
+i128 = IntLiteral.Type("i128", True)
+isize = IntLiteral.Type("isize", True)
 # @formatter:on
 
 
 class FloatLiteral(Literal[float]):
-    SUFFIXES: Final[Collection[str]] = ("f32", "f64")
+    @final
+    class Type:
+        __slots__ = ("suffix", "bits")
 
-    __slots__ = ("suffix",)
+        _TYPES = {}
 
-    suffix: str | None
+        @overload
+        def __new__(cls, suffix: str) -> Self: ...
 
-    def __init__(self, value: SupportsFloat, suffix: str | None = None, span: Span | None = None):
+        @overload
+        def __new__(cls, suffix: str, bits: int) -> Self: ...
+
+        def __new__(cls, suffix: str, bits: int | None = None) -> Self:
+            obj = cls._TYPES.get(suffix)
+            if obj is None:
+                obj = super().__new__(cls)
+                obj.suffix = suffix
+                obj.bits = bits
+                cls._TYPES[suffix] = obj
+            return obj
+
+        def __call__(self, value: SupportsFloat, span: Span | None = None):
+            return FloatLiteral(value, self, span)
+
+        def __repr__(self):
+            return self.suffix
+
+    __slots__ = ("repr", "type")
+
+    repr: str | None
+    type: Type | None
+
+    @classmethod
+    def _new(cls, repr: str, value: float, type: Type | None, span: Span) -> Self:
+        """For use from generated code only."""
+        obj = cls.__new__(cls)
+        obj.repr = repr
+        obj.value = value
+        obj.type = type
+        obj.span = span
+        return obj
+
+    def __init__(self, value: SupportsFloat, type: Type | str | None = None, span: Span | None = None):
         super().__init__(span)
         self.value = float(value)
-        if suffix is not None and suffix not in FloatLiteral.SUFFIXES:
-            raise ValueError(f"invalid {self.__class__.__name__} suffix \"{suffix}\"")
-        self.suffix = suffix
+        if isinstance(type, str):
+            type = FloatLiteral.Type(type)
+        self.type = type
 
     def __str__(self):
-        return f"{self.value}{self.suffix or ""}"
+        return f"{self.repr or self.value}{self.type or ""}"
 
     def __repr__(self):
-        return f"{self.__class__.__name__}({self.value!r}, \"{self.suffix}\", {self.span!r})"
+        return f"{self.__class__.__name__}({self.repr or self.value}, {self.type}, {self.span!r})"
 
     def _append_to_tokenstream(self, stream: _pymeta.TokenStream):
-        stream.append_float_literal(self.value, self.suffix, self.span)
+        stream.append_float_literal(self.value, str(self.type) if self.type else None, self.span)
 
-def f32(value: SupportsFloat, span: Span | None = None) -> FloatLiteral:
-    return FloatLiteral(value, "f32", span)
-
-def f64(value: SupportsFloat, span: Span | None = None) -> FloatLiteral:
-    return FloatLiteral(value, "f64", span)
+# @formatter:off
+f32 = FloatLiteral.Type("f32", 32)
+f64 = FloatLiteral.Type("f64", 64)
+# @formatter:on
 
 
 class StrLiteral(Literal[str]):
     CHR: Final[str] = "chr"
     STR: Final[str] = "str"
-    CSTR: Final[str] = "cstr"
 
     __slots__ = ("type",)
 
@@ -557,7 +629,7 @@ class StrLiteral(Literal[str]):
 
     def __init__(self, value: str, type: str = STR, span: Span | None = None):
         super().__init__(span)
-        if type not in (StrLiteral.STR, StrLiteral.CHR, StrLiteral.CSTR):
+        if type not in (StrLiteral.STR, StrLiteral.CHR):
             raise ValueError(f"invalid {self.__class__.__name__} type \"{type}\"")
         if type == StrLiteral.CHR and len(value) != 1:
             raise ValueError(f"\"{value}\" is not a single character")
@@ -565,10 +637,10 @@ class StrLiteral(Literal[str]):
         self.type = type
 
     def __str__(self):
-        return repr(self.value)  # TODO: rust format
+        return f'"{self.repr}"' if self.repr is not None else repr(self.value)  # TODO: rust format
 
     def __repr__(self):
-        return f"{self.__class__.__name__}({self.value!r}, \"{self.type}\", {self.span!r})"
+        return f"{self.__class__.__name__}({self.__str__()}, \"{self.type}\", {self.span!r})"
 
     def _append_to_tokenstream(self, stream: _pymeta.TokenStream):
         stream.append_str_literal(self.type, self.value, self.span)
@@ -577,6 +649,7 @@ class StrLiteral(Literal[str]):
 class BytesLiteral(Literal[bytes]):
     BYTE: Final[str] = "byte"
     BYTES: Final[str] = "bytes"
+    CSTR: Final[str] = "cstr"
 
     __slots__ = ("type",)
 
@@ -585,7 +658,7 @@ class BytesLiteral(Literal[bytes]):
     def __init__(self, value: SupportsBytes, type: str = BYTES, span: Span | None = None):
         super().__init__(span)
         value = bytes(value)
-        if type not in (BytesLiteral.BYTE, BytesLiteral.BYTES):
+        if type not in (BytesLiteral.BYTE, BytesLiteral.BYTES, BytesLiteral.CSTR):
             raise ValueError(f"invalid {self.__class__.__name__} type \"{type}\"")
         if type == BytesLiteral.BYTE and len(value) != 1:
             raise ValueError(f"\"{value}\" is not a single byte")
@@ -593,13 +666,30 @@ class BytesLiteral(Literal[bytes]):
         self.type = type
 
     def __str__(self):
-        return repr(self.value)  # TODO: rust format
+        return f'"{self.repr}"' if self.repr is not None else repr(self.value)  # TODO: rust format
 
     def __repr__(self):
-        return f"{self.__class__.__name__}({self.value!r}, \"{self.type}\", {self.span!r})"
+        return f"{self.__class__.__name__}({self.__str__()}, \"{self.type}\", {self.span!r})"
 
     def _append_to_tokenstream(self, stream: _pymeta.TokenStream):
         stream.append_bytes_literal(self.type, self.value, self.span)
+
+
+class BoolLiteral(Literal[bool]):
+    __slots__ = ()
+
+    def __init__(self, value: bool, span: Span | None = None):
+        super().__init__(span)
+        self.value = value
+
+    def __str__(self):
+        return ("false", "true")[self.value]
+
+    def __repr__(self):
+        return f"{self.__class__.__name__}({self.value}, {self.span!r})"
+
+    def _append_to_tokenstream(self, stream: _pymeta.TokenStream):
+        stream.append_ident(self.__str__(), self.span)
 
 
 # @formatter:off
