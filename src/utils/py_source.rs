@@ -1,12 +1,15 @@
 use crate::utils::rust_token::CSpan;
+use crate::utils::SpanEx;
+use proc_macro2::Span;
 use std::borrow::Cow;
+use std::fmt::Write;
 use std::iter::repeat_n;
 use std::rc::Rc;
 
 #[derive(Debug)]
 pub(crate) struct PySegment {
-    code: Cow<'static, str>,
-    src_span: Option<Rc<CSpan>>,
+    pub code: Cow<'static, str>,
+    pub src_span: Option<Rc<CSpan>>,
 }
 
 impl PySegment {
@@ -20,12 +23,22 @@ impl PySegment {
     pub fn add_to_string(&self, string: &mut String) {
         string.push_str(&self.code);
     }
+
+    pub fn join_src_spans<'a>(segments: impl Iterator<Item = &'a PySegment>) -> Option<Span> {
+        segments
+            .map(|seg| seg.src_span.as_ref().map(|s| s.inner()))
+            .reduce(|a, b| match (a, b) {
+                (Some(a), Some(b)) => Some(a.join_or_fallback(Some(b))),
+                (a, b) => a.or(b),
+            })
+            .flatten()
+    }
 }
 
 #[derive(Debug)]
-struct PyLine {
-    segments: Vec<PySegment>,
-    indent: usize,
+pub(crate) struct PyLine {
+    pub segments: Box<[Rc<PySegment>]>,
+    pub indent: usize,
 }
 
 impl PyLine {
@@ -33,7 +46,7 @@ impl PyLine {
         self.segments.is_empty()
     }
 
-    fn add_to_string(&self, string: &mut String) {
+    pub fn add_to_string(&self, string: &mut String) {
         string.extend(repeat_n(' ', self.indent));
         self.segments
             .iter()
@@ -44,7 +57,7 @@ impl PyLine {
 
 #[derive(Debug)]
 pub(crate) struct PySource {
-    lines: Vec<PyLine>,
+    pub lines: Box<[PyLine]>,
 }
 
 impl PySource {
@@ -53,6 +66,25 @@ impl PySource {
         self.lines
             .iter()
             .for_each(|line| line.add_to_string(&mut string));
+        string
+    }
+
+    pub fn diagnostic_source_dump(&self) -> String {
+        if self.lines.is_empty() {
+            return String::from("<Python source is empty>");
+        }
+        let lineno_digits = self.lines.len().ilog10() + 1;
+        let mut string = String::new();
+        for (lineno, line) in (1..).zip(self.lines.iter()) {
+            write!(
+                string,
+                "{lineno:>width$} | ",
+                width = lineno_digits as usize
+            )
+            .unwrap();
+            line.add_to_string(&mut string);
+        }
+        string.pop(); // pop last newline
         string
     }
 }
@@ -66,7 +98,7 @@ pub(crate) mod builder {
 
     #[derive(Debug)]
     struct PyLine {
-        segments: Vec<PySegment>,
+        segments: Vec<Rc<PySegment>>,
         indent: Option<usize>,
     }
 
@@ -79,7 +111,7 @@ pub(crate) mod builder {
         }
 
         fn append(&mut self, segment: PySegment) {
-            self.segments.push(segment);
+            self.segments.push(Rc::new(segment));
         }
     }
 
@@ -189,7 +221,7 @@ pub(crate) mod builder {
                         match content {
                             Either::Left(line) => {
                                 let line = super::PyLine {
-                                    segments: mem::take(&mut line.segments),
+                                    segments: mem::take(&mut line.segments).into_boxed_slice(),
                                     indent: line.indent.unwrap(),
                                 };
                                 last_indent = line.indent;
@@ -216,7 +248,9 @@ pub(crate) mod builder {
                 was_empty_line = is_empty_line;
             }
 
-            PySource { lines }
+            PySource {
+                lines: lines.into_boxed_slice(),
+            }
         }
     }
 }

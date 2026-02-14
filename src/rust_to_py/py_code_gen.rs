@@ -1,13 +1,13 @@
+use crate::rust_to_py::PY_MARKER_STR;
 use crate::rust_to_py::code_regions::{
     CodeRegion, IdentWithPyExpr, PyExpr, PyStmt, PyStmtWithIndentBlock, RustCode, RustCodeWithBlock,
 };
 use crate::rust_to_py::utils::{DelimiterEx, PunctEx, TokenBufferEx};
-use crate::rust_to_py::PY_MARKER_STR;
+use crate::utils::SpanEx;
 use crate::utils::escape::*;
 use crate::utils::py_source::builder::PySourceBuilder;
 use crate::utils::py_source::{PySegment, PySource};
 use crate::utils::rust_token::{CSpan, Literal, Token, TokenBuffer};
-use crate::utils::SpanEx;
 use either::Either;
 use proc_macro2::Spacing;
 use std::rc::Rc;
@@ -15,9 +15,26 @@ use std::rc::Rc;
 const INDENT_SIZE: usize = 4;
 
 #[derive(Debug)]
-pub(crate) struct PyMetaExecutable {
+pub(crate) struct PyMetaModule {
+    pub filename: String,
     pub source: PySource,
     pub spans: Box<[Rc<CSpan>]>,
+}
+
+#[derive(Debug)]
+pub(crate) struct PyMetaExecutable {
+    pub main: Rc<PyMetaModule>,
+    //TODO: imported modules
+}
+
+impl PyMetaExecutable {
+    pub fn find_module_from_filename(&self, filename: &str) -> Option<&Rc<PyMetaModule>> {
+        if self.main.filename == filename {
+            Some(&self.main)
+        } else {
+            None
+        }
+    }
 }
 
 pub(crate) struct PyCodeGen {
@@ -388,8 +405,9 @@ impl PyCodeGen {
         regions.for_each(|region| self.append_code_region(region));
     }
 
-    pub fn finish(self) -> PyMetaExecutable {
-        PyMetaExecutable {
+    pub fn finish(self, filename: String) -> PyMetaModule {
+        PyMetaModule {
+            filename,
             source: self.py.finish(),
             spans: self.spans.into_boxed_slice(),
         }
