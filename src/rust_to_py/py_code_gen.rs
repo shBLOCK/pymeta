@@ -71,7 +71,7 @@ impl PyCodeGen {
                 }
 
                 // before punct
-                (_, Token::Punct(punct)) => !matches!(punct.inner().as_char(), ';' | ',' | ':'),
+                (Some(_), Token::Punct(punct)) => !matches!(punct.inner().as_char(), ';' | ',' | ':'),
                 // after punct
                 (Some(Token::Punct(punct)), _) if punct.inner().spacing() == Spacing::Alone => true,
 
