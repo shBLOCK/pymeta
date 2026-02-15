@@ -81,6 +81,12 @@ pub(crate) struct Group {
     tokens: Rc<[Token]>,
 }
 
+impl Punct {
+    pub fn eq_punct(&self, ch: char) -> bool {
+        self.punct.as_char() == ch
+    }
+}
+
 impl Group {
     pub fn tokens(&self) -> TokenBuffer {
         TokenBuffer::from(&self.tokens)
@@ -203,7 +209,7 @@ impl Token {
 
     pub fn eq_punct(&self, ch: char) -> bool {
         match self {
-            Self::Punct(punct) => punct.punct.as_char() == ch,
+            Self::Punct(punct) => punct.eq_punct(ch),
             _ => false,
         }
     }

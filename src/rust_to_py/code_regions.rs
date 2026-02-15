@@ -173,7 +173,7 @@ pub(crate) mod parser {
                             _marker: start,
                             tokens: py_tokens.into(),
                         },
-                        group: group,
+                        group,
                         block: CodeRegionParser::new().parse(group_tokens).into(),
                     }));
                 }
@@ -212,13 +212,20 @@ pub(crate) mod parser {
                         }
                         (Some(CodeRegion::RustCode(code)), ParsePyResult::Expr(expr)) => {
                             match &mut code[..] {
-                                [.., RustCode::IdentWithPyExpr(code)] => {
+                                [
+                                    ..,
+                                    RustCode::IdentWithPyExpr(code),
+                                    RustCode::Code(Token::Punct(concat)),
+                                ] if concat.eq_punct(CONCAT_MARKER) => {
+                                    let _concat_marker = code.pop();
                                     code.push(Either::Right(expr));
                                 }
-                                [.., RustCode::Code(Token::Ident(_)), RustCode::Code(concat)]
-                                    if concat.eq_punct(CONCAT_MARKER) =>
-                                {
-                                    let _ = code.pop(); // concat marker
+                                [
+                                    ..,
+                                    RustCode::Code(Token::Ident(_)),
+                                    RustCode::Code(Token::Punct(concat)),
+                                ] if concat.eq_punct(CONCAT_MARKER) => {
+                                    let _concat_marker = code.pop();
                                     let RustCode::Code(Token::Ident(ident)) = code.pop().unwrap()
                                     else {
                                         unreachable!()
@@ -281,13 +288,37 @@ pub(crate) mod parser {
                             }
                         }
                         token => {
-                            self.get_or_put_rust_code_region()
-                                .push(RustCode::Code(token.clone()));
+                            if let Token::Ident(ident) = token
+                                && let Some(CodeRegion::RustCode(code)) = self.regions.last_mut()
+                                && let [
+                                    ..,
+                                    RustCode::PyExpr(_) | RustCode::IdentWithPyExpr(_),
+                                    RustCode::Code(Token::Punct(concat)),
+                                ] = &code[..]
+                                && concat.eq_punct(CONCAT_MARKER)
+                            {
+                                // Python expr followed by CONCAT_MARKER and then by the current token which is an ident => make a IdentWithPyExpr
+                                let _concat_marker = code.pop();
+                                // if last is PyExpr, turn it into a IdentWithPyExpr
+                                if let Some(expr) =
+                                    code.pop_if(|expr| matches!(expr, RustCode::PyExpr(_)))
+                                {
+                                    code.push(RustCode::IdentWithPyExpr(vec![Either::Right(
+                                        match_unwrap!(expr in RustCode::PyExpr(expr) = expr),
+                                    )]));
+                                }
+                                match_unwrap!(iwp in Some(RustCode::IdentWithPyExpr(iwp)) = code.last_mut())
+                                        .push(Either::Left(Rc::clone(ident)));
+                            } else {
+                                // a normal token
+                                self.get_or_put_rust_code_region()
+                                    .push(RustCode::Code(token.clone()));
 
-                            // start a new region on semicolons to make the resulting Python code more readable
-                            //TODO: only do this for braces, or only when the region is too long
-                            if token.eq_punct(';') {
-                                self.regions.push(CodeRegion::RustCode(Vec::new()));
+                                // start a new region on semicolons to make the resulting Python code more readable
+                                //TODO: only do this for braces, or only when the region is too long
+                                if token.eq_punct(';') {
+                                    self.regions.push(CodeRegion::RustCode(Vec::new()));
+                                }
                             }
                         }
                     }
