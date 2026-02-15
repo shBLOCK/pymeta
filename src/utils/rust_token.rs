@@ -1,3 +1,4 @@
+#[cfg(feature = "nightly_proc_macro_span")]
 use crate::utils::LineColumn;
 use proc_macro2::{Delimiter, Span, TokenTree};
 use std::cell::OnceCell;
@@ -9,8 +10,10 @@ use std::rc::Rc;
 /// [Span] operations can be expansive, see: https://github.com/rust-lang/rust/issues/149331#issuecomment-3580649306
 pub(crate) struct CSpan {
     span: Span,
-    _start: OnceCell<LineColumn>,
-    _end: OnceCell<LineColumn>,
+    #[cfg(feature = "nightly_proc_macro_span")]
+    start: OnceCell<LineColumn>,
+    #[cfg(feature = "nightly_proc_macro_span")]
+    end: OnceCell<LineColumn>,
 }
 
 impl CSpan {
@@ -18,12 +21,14 @@ impl CSpan {
         self.span
     }
 
+    #[cfg(feature = "nightly_proc_macro_span")]
     pub fn start(&self) -> LineColumn {
-        *self._start.get_or_init(|| self.span.start())
+        *self.start.get_or_init(|| self.span.start().into())
     }
 
+    #[cfg(feature = "nightly_proc_macro_span")]
     pub fn end(&self) -> LineColumn {
-        *self._end.get_or_init(|| self.span.end())
+        *self.end.get_or_init(|| self.span.end().into())
     }
 }
 
@@ -31,8 +36,10 @@ impl From<Span> for CSpan {
     fn from(value: Span) -> Self {
         Self {
             span: value,
-            _start: OnceCell::new(),
-            _end: OnceCell::new(),
+            #[cfg(feature = "nightly_proc_macro_span")]
+            start: OnceCell::new(),
+            #[cfg(feature = "nightly_proc_macro_span")]
+            end: OnceCell::new(),
         }
     }
 }

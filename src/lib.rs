@@ -4,9 +4,9 @@
 extern crate proc_macro;
 use std::fmt::Write;
 
+use crate::rust_to_py::PY_MARKER;
 use crate::rust_to_py::code_regions::parser::CodeRegionParser;
 use crate::rust_to_py::py_code_gen::{PyCodeGen, PyMetaExecutable};
-use crate::rust_to_py::PY_MARKER;
 use either::Either;
 use proc_macro::{Diagnostic, Level as DiagnosticLevel};
 use proc_macro2::{Span, TokenStream};
@@ -87,22 +87,15 @@ pub fn pymeta(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
                         .as_ref()
                         .map_left(|m| &m.filename)
                         .into_inner();
+                    let mut text =
+                        format!("|  File \"{filename}\", line {}", frame.location.start_line);
+                    #[cfg(feature = "nightly_proc_macro_span")]
                     if let Some(src_span) = frame.location.src_span() {
-                        diagnostic = diagnostic.span_note(
-                            src_span.unwrap(),
-                            format!(
-                                "|  File \"{filename}\", line {} (Rust line {}), in {}",
-                                frame.location.start_line,
-                                src_span.start().line,
-                                frame.frame_name
-                            ),
-                        );
-                    } else {
-                        diagnostic = diagnostic.note(format!(
-                            "|  File \"{filename}\", line {}, in {}",
-                            frame.location.start_line, frame.frame_name
-                        ));
+                        write!(text, " (Rust line {})", src_span.start().line).unwrap();
                     }
+                    write!(text, ", in {}", frame.frame_name).unwrap();
+
+                    diagnostic = diagnostic.note(text);
                 }
 
                 // let module = exe_result.exe.main;
@@ -125,6 +118,7 @@ pub fn pymeta(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
                     file = location.file.as_ref().map_left(|m| &m.filename),
                     line = location.start_line,
                 );
+                #[cfg(feature = "nightly_proc_macro_span")]
                 if let Some(src_span) = location.src_span() {
                     write!(location_msg, " (Rust line {})", src_span.start().line).unwrap();
                 }
@@ -154,5 +148,8 @@ pub fn pymeta(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
         }
     }
 
-    exe_result.result.unwrap_or_else(|_| TokenStream::new()).into()
+    exe_result
+        .result
+        .unwrap_or_else(|_| TokenStream::new())
+        .into()
 }

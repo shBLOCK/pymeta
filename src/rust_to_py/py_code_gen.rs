@@ -1,4 +1,3 @@
-use crate::rust_to_py::PY_MARKER_STR;
 use crate::rust_to_py::code_regions::{
     CodeRegion, IdentWithPyExpr, PyExpr, PyStmt, PyStmtWithIndentBlock, RustCode, RustCodeWithBlock,
 };
