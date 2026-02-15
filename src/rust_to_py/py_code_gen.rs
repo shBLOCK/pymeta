@@ -367,7 +367,19 @@ impl PyCodeGen {
                 self.py.append(PySegment::new(", ", None));
             }
             RustCode::PyExpr(expr) => {
+                let span = Rc::new(CSpan::from(
+                    expr.start_marker
+                        .span()
+                        .inner()
+                        .join_or_fallback(Some(expr.end_marker.span().inner())),
+                ));
+                self.py
+                    .append(PySegment::new("Tokens(", Some(Rc::clone(&span))));
                 self.append_inline_py_expr(expr);
+                self.py
+                    .append(PySegment::new(", span=", Some(Rc::clone(&span))));
+                self.append_span(Rc::clone(&span));
+                self.py.append(PySegment::new(")", Some(span)));
                 self.py.append(PySegment::new(", ", None));
             }
             RustCode::IdentWithPyExpr(parts) => {
