@@ -35,6 +35,14 @@ class Token(ABC):
     @abstractmethod
     def __repr__(self): ...
 
+    def join(self, tokens: Iterable[Token]) -> Tokens:
+        result = Tokens()
+        for token in tokens:
+            result.append(token)
+            result.append(self)
+        result.pop()
+        return tokens
+
     @abstractmethod
     def _append_to_tokenstream(self, stream: _pymeta.TokenStream): ...
 
