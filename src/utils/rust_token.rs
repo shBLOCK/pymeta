@@ -281,6 +281,10 @@ impl TokenBuffer {
     pub fn current(&self) -> Option<&Token> {
         self.tokens.get(self.pos)
     }
+    
+    pub fn current_slice(&self) -> &[Token] {
+        &self.tokens[self.pos..]
+    }
 
     pub fn peek(&self, offset: isize) -> Option<&Token> {
         self.tokens.get(self.pos.checked_add_signed(offset)?)

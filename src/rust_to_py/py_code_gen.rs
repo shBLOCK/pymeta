@@ -1,12 +1,13 @@
+use crate::rust_to_py::CONCAT_MARKER;
 use crate::rust_to_py::code_regions::{
     CodeRegion, IdentWithPyExpr, PyExpr, PyStmt, PyStmtWithIndentBlock, RustCode, RustCodeWithBlock,
 };
 use crate::rust_to_py::utils::{DelimiterEx, PunctEx};
+use crate::utils::SpanEx;
 use crate::utils::escape::*;
 use crate::utils::py_source::builder::PySourceBuilder;
 use crate::utils::py_source::{PySegment, PySource};
-use crate::utils::rust_token::{CSpan, Literal, Token, TokenBuffer};
-use crate::utils::SpanEx;
+use crate::utils::rust_token::{CSpan, Token, TokenBuffer};
 use either::Either;
 use proc_macro2::Spacing;
 use std::rc::Rc;
@@ -48,14 +49,14 @@ impl PyCodeGen {
         }
     }
 
-    fn literal_to_python_code(literal: &Literal) -> String {
-        literal.inner().to_string() // FIXME: always produce valid Python syntax, or report error
+    fn rust_literal_repr_to_python_code(repr: String) -> String {
+        repr // FIXME: always produce valid Python syntax, or report error
     }
 
     /// Turn Rust tokens into Python code, assuming that they represent valid Python code.
     fn append_tokens_as_python_code(&mut self, mut tokens: TokenBuffer) {
         fn need_space_between(last: Option<&Token>, current: &Token) -> bool {
-            // For now, this works with escapes and special patterns.
+            // For now, this works with special patterns (e.g. f-strings).
             // If more complicated patterns are added in the future, how decide if to insert space may need to be changed.
             match (last, current) {
                 // between ident and literal
@@ -84,6 +85,31 @@ impl PyCodeGen {
             if need_space_between(tokens.peek(-1), token) {
                 self.py.append(PySegment::new(" ", None));
             }
+
+            // workaround `f"string"` being reserved syntax in Rust
+            // `f~"string"` => `f"string"`
+            if let [
+                Token::Ident(prefix),
+                Token::Punct(concat),
+                Token::Literal(string),
+                ..,
+            ] = tokens.current_slice()
+                && concat.eq_punct(CONCAT_MARKER)
+                && let repr = string.inner().to_string()
+                && repr.starts_with('"')
+            {
+                self.py.append(PySegment::new(
+                    prefix.inner().to_string(),
+                    Some(prefix.span()),
+                ));
+                self.py.append(PySegment::new(
+                    Self::rust_literal_repr_to_python_code(repr),
+                    Some(string.span()),
+                ));
+                tokens.seek(3).unwrap();
+                continue;
+            }
+
             match token {
                 Token::Ident(ident) => {
                     self.py.append(PySegment::new(
@@ -97,7 +123,7 @@ impl PyCodeGen {
                 }
                 Token::Literal(literal) => {
                     self.py.append(PySegment::new(
-                        Self::literal_to_python_code(literal.as_ref()),
+                        Self::rust_literal_repr_to_python_code(literal.inner().to_string()),
                         Some(literal.span()),
                     ));
                 }
@@ -153,11 +179,9 @@ impl PyCodeGen {
                 ))),
             ));
         } else {
-            self.py
-                .append(PySegment::new("(", Some(start_span)));
+            self.py.append(PySegment::new("(", Some(start_span)));
             self.append_tokens_as_python_code(TokenBuffer::from(&expr.tokens));
-            self.py
-                .append(PySegment::new(")", Some(end_span)));
+            self.py.append(PySegment::new(")", Some(end_span)));
         }
     }
 
