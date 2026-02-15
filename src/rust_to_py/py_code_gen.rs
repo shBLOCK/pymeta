@@ -118,8 +118,10 @@ impl PyCodeGen {
                     ));
                 }
                 Token::Punct(punct) => {
-                    self.py
-                        .append(PySegment::new(punct.as_str(), Some(punct.span())));
+                    if !punct.eq_punct(';') {
+                        self.py
+                            .append(PySegment::new(punct.as_str(), Some(punct.span())));
+                    }
                 }
                 Token::Literal(literal) => {
                     self.py.append(PySegment::new(
