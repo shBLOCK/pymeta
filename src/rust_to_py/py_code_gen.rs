@@ -1,12 +1,12 @@
 use crate::rust_to_py::code_regions::{
     CodeRegion, IdentWithPyExpr, PyExpr, PyStmt, PyStmtWithIndentBlock, RustCode, RustCodeWithBlock,
 };
-use crate::rust_to_py::utils::{DelimiterEx, PunctEx, TokenBufferEx};
-use crate::utils::SpanEx;
+use crate::rust_to_py::utils::{DelimiterEx, PunctEx};
 use crate::utils::escape::*;
 use crate::utils::py_source::builder::PySourceBuilder;
 use crate::utils::py_source::{PySegment, PySource};
 use crate::utils::rust_token::{CSpan, Literal, Token, TokenBuffer};
+use crate::utils::SpanEx;
 use either::Either;
 use proc_macro2::Spacing;
 use std::rc::Rc;
@@ -70,7 +70,9 @@ impl PyCodeGen {
                 }
 
                 // before punct
-                (Some(_), Token::Punct(punct)) => !matches!(punct.inner().as_char(), ';' | ',' | ':'),
+                (Some(_), Token::Punct(punct)) => {
+                    !matches!(punct.inner().as_char(), ';' | ',' | ':')
+                }
                 // after punct
                 (Some(Token::Punct(punct)), _) if punct.inner().spacing() == Spacing::Alone => true,
 
@@ -142,12 +144,21 @@ impl PyCodeGen {
     }
 
     fn append_inline_py_expr(&mut self, expr: &PyExpr) {
-        assert!(!expr.tokens.is_empty());
-        self.py
-            .append(PySegment::new("(", Some(expr.start_marker.span())));
-        self.append_tokens_as_python_code(TokenBuffer::from(&expr.tokens));
-        self.py
-            .append(PySegment::new(")", Some(expr.end_marker.span())));
+        let (start_span, end_span) = (expr.start_marker.span(), expr.end_marker.span());
+        if expr.tokens.is_empty() {
+            self.py.append(PySegment::new(
+                "None",
+                Some(Rc::new(CSpan::from(
+                    start_span.inner().join_or_fallback(Some(end_span.inner())),
+                ))),
+            ));
+        } else {
+            self.py
+                .append(PySegment::new("(", Some(start_span)));
+            self.append_tokens_as_python_code(TokenBuffer::from(&expr.tokens));
+            self.py
+                .append(PySegment::new(")", Some(end_span)));
+        }
     }
 
     fn append_ident_with_inline_py_expr(&mut self, parts: &IdentWithPyExpr) {
