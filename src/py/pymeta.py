@@ -24,10 +24,10 @@ __all__ = (
 class Token(ABC):
     __slots__ = ("span",)
 
-    span: Span
+    span: Span | None
 
     def __init__(self, span: Span | None = None):
-        self.span = span or Span.call_site()
+        self.span = span
 
     @abstractmethod
     def __str__(self): ...
@@ -65,26 +65,22 @@ class Tokens(MutableSequence[Token]):
         return cls._CTX_STACK[-1]
 
     @staticmethod
-    def _coerce(items: Iterable[CoerceToTokens]) -> list[Token]:
+    def _coerce(items: Iterable[CoerceToTokens], *, span: Span | None = None) -> list[Token]:
         _results = []
         _group_stack: list[Group] = []
 
         def emit(token: Token):
+            if token.span is None:
+                token.span = span
             if _group_stack:
                 _group_stack[-1].tokens.append(token)
             else:
                 _results.append(token)
 
-        def emit_all(tokens: Iterable[Token]):
-            if _group_stack:
-                _group_stack[-1].tokens.extend(tokens)
-            else:
-                _results.extend(tokens)
-
         def push_group(delim: str):
             delim = Group.OPENING_TO_DELIMITER.get(delim)
             assert delim is not None
-            _group_stack.append(Group(delim))
+            _group_stack.append(Group(delim, span=span))
 
         def pop_group(delim: str):
             delim = Group.CLOSING_TO_DELIMITER.get(delim)
@@ -273,7 +269,8 @@ class Tokens(MutableSequence[Token]):
         def process_one(item: CoerceToTokens):
             match item:
                 case Tokens():
-                    emit_all(item)
+                    for token in item:
+                        emit(token)
                 case Token():
                     emit(item)
                 case int(value):
@@ -308,18 +305,21 @@ class Tokens(MutableSequence[Token]):
         self,
         *args: CoerceToTokens,
         items: Iterable[CoerceToTokens] | None = None,
-        tokens: Iterable[Token] | None = None
+        tokens: Iterable[Token] | None = None,
+        span: Span | None = None
     ):
         match (args, items, tokens):
             case (_, None, None):
-                self._tokens = Tokens._coerce(args)
+                self._tokens = Tokens._coerce(args, span=span)
             case ((), items, None) if items is not None:
-                self._tokens = Tokens._coerce(items)
+                self._tokens = Tokens._coerce(items, span=span)
             case ((), None, tokens) if tokens is not None:
                 self._tokens = list(tokens)
                 for token in self._tokens:
                     if not isinstance(token, Token):
                         raise TypeError(f"Not a Token: {token!r}")
+                    if token.span is None:
+                        token.span = span
             case _:
                 raise ValueError("Multiple arg collections provided")
 
@@ -765,14 +765,14 @@ def lit(
 
 
 # noinspection PyProtectedMember
-def rust(*args: CoerceToTokens) -> None | Group:
+def rust(*args: CoerceToTokens, span: Span | None = None) -> None | Group:
     """Take a list of items, coerce them into ``Tokens``, then add them to the current ``Tokens`` context.
 
     :return: The last ``Token`` coerced from args if that token is a ``Group``, ``None`` elsewise.
         The intended use case for this is to be used together with a ``with`` statement
         to enter the ``Group`` at the end of the coercion result.
     """
-    tokens = Tokens(*args)
+    tokens = Tokens(*args, span=span)
     Tokens._current_ctx().extend(tokens)
     if len(tokens) > 0 and isinstance(tokens[-1], Group):
         return tokens[-1]
