@@ -40,7 +40,7 @@ class Token(ABC):
 
 
 type CoerceToTokens = (
-    Token
+    Tokens | Token
     | Template | str
     | int | float | bool | (bytes | bytearray | memoryview[Any])
     | (tuple | list)
@@ -66,6 +66,12 @@ class Tokens(MutableSequence[Token]):
                 _group_stack[-1].tokens.append(token)
             else:
                 _results.append(token)
+
+        def emit_all(tokens: Iterable[Token]):
+            if _group_stack:
+                _group_stack[-1].tokens.extend(tokens)
+            else:
+                _results.extend(tokens)
 
         def push_group(delim: str):
             delim = Group.OPENING_TO_DELIMITER.get(delim)
@@ -258,6 +264,8 @@ class Tokens(MutableSequence[Token]):
 
         def process_one(item: CoerceToTokens):
             match item:
+                case Tokens():
+                    emit_all(item)
                 case Token():
                     emit(item)
                 case int(value):
