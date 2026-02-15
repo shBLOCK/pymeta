@@ -178,13 +178,17 @@ pub(crate) mod parser {
                     }));
                 }
 
-                let Some(token) = tokens.read_one() else {
-                    abort!(
-                        tokens.peek(-1).unwrap().span().inner().unwrap().end(),
-                        "Incomplete Python segment."
-                    );
-                };
-                py_tokens.push(token.clone())
+                if tokens.is_py_marker_escape() {
+                    py_tokens.push(Token::Punct(tokens.read_unescaped_py_marker_escape()));
+                } else {
+                    let Some(token) = tokens.read_one() else {
+                        abort!(
+                            tokens.peek(-1).unwrap().span().inner().unwrap().end(),
+                            "Incomplete Python segment."
+                        );
+                    };
+                    py_tokens.push(token.clone())
+                }
             }
         }
 
@@ -232,7 +236,11 @@ pub(crate) mod parser {
                             .push(CodeRegion::RustCode(vec![RustCode::PyExpr(expr)])),
                     }
                 } else {
-                    let token = tokens.read_one().unwrap();
+                    let token = if tokens.is_py_marker_escape() {
+                        &Token::Punct(tokens.read_unescaped_py_marker_escape())
+                    } else {
+                        tokens.read_one().unwrap()
+                    };
                     match token {
                         Token::Group(group) => {
                             let group_regions = Self::new().parse(group.tokens());

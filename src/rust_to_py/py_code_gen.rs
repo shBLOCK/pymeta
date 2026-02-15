@@ -84,14 +84,6 @@ impl PyCodeGen {
                 self.py.append(PySegment::new(" ", None));
             }
             match token {
-                _ if tokens.is_py_marker_escape() => {
-                    self.py.append(PySegment::new(
-                        PY_MARKER_STR,
-                        Some(tokens.py_marker_escape_span()),
-                    ));
-                    tokens.skip_py_marker_escape();
-                    continue;
-                }
                 Token::Ident(ident) => {
                     self.py.append(PySegment::new(
                         ident.inner().to_string(),

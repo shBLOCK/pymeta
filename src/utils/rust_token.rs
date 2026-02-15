@@ -1,4 +1,5 @@
-use proc_macro2::{Delimiter, LineColumn, Span, TokenTree};
+use crate::utils::LineColumn;
+use proc_macro2::{Delimiter, Span, TokenTree};
 use std::cell::OnceCell;
 use std::fmt::{Debug, Formatter};
 use std::rc::Rc;
@@ -48,21 +49,25 @@ impl From<&CSpan> for Span {
     }
 }
 
+#[derive(Clone)]
 pub(crate) struct Ident {
     ident: proc_macro2::Ident,
     span: OnceCell<Rc<CSpan>>,
 }
 
+#[derive(Clone)]
 pub(crate) struct Punct {
     punct: proc_macro2::Punct,
     span: OnceCell<Rc<CSpan>>,
 }
 
+#[derive(Clone)]
 pub(crate) struct Literal {
     literal: proc_macro2::Literal,
     span: OnceCell<Rc<CSpan>>,
 }
 
+#[derive(Clone)]
 pub(crate) struct Group {
     group: proc_macro2::Group,
     span: OnceCell<Rc<CSpan>>,
@@ -114,6 +119,11 @@ macro_rules! impl_token_struct_common {
             #[allow(unused)]
             pub fn inner(&self) -> &proc_macro2::$struct_name {
                 &self.$inner_name
+            }
+
+            pub fn set_span(&mut self, span: Span) {
+                self.span.take();
+                self.$inner_name.set_span(span);
             }
         }
     };

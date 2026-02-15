@@ -61,6 +61,7 @@ pub(super) trait TokenBufferEx {
     fn is_py_marker_escape(&self) -> bool;
     fn py_marker_escape_span(&self) -> Rc<CSpan>;
     fn skip_py_marker_escape(&mut self);
+    fn read_unescaped_py_marker_escape(&mut self) -> Rc<Punct>;
     fn is_py_marker_start(&self) -> bool;
     fn is_py_marker_end(&self) -> bool;
     fn is_indent_block(&self) -> bool;
@@ -78,25 +79,31 @@ impl TokenBufferEx for TokenBuffer {
     fn py_marker_escape_span(&self) -> Rc<CSpan> {
         let start = self.current().unwrap().span();
         let end = self.peek(2).unwrap().span();
-        start
-            .inner()
-            .join(end.inner())
-            .map(|s| Rc::new(CSpan::from(s)))
-            .unwrap_or(start)
+        Rc::new(CSpan::from(
+            start
+                .inner()
+                .join(end.inner())
+                .unwrap_or_else(|| self.peek(1).unwrap().span().inner()),
+        ))
     }
 
     fn skip_py_marker_escape(&mut self) {
         self.seek(3).unwrap();
     }
 
+    fn read_unescaped_py_marker_escape(&mut self) -> Rc<Punct> {
+        let mut punct = self.peek(1).unwrap().clone().punct().unwrap();
+        Rc::make_mut(&mut punct).set_span(self.py_marker_escape_span().inner());
+        self.skip_py_marker_escape();
+        punct
+    }
+
     fn is_py_marker_start(&self) -> bool {
-        self.current().eq_punct(PY_MARKER)
-            && !self.is_current_py_marker_escaped()
+        self.current().eq_punct(PY_MARKER) && !self.is_current_py_marker_escaped()
     }
 
     fn is_py_marker_end(&self) -> bool {
-        self.current().eq_punct(PY_MARKER)
-            && !self.is_current_py_marker_escaped()
+        self.current().eq_punct(PY_MARKER) && !self.is_current_py_marker_escaped()
     }
 
     fn is_indent_block(&self) -> bool {
