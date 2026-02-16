@@ -3,7 +3,9 @@ use crate::utils::LineColumn;
 use proc_macro2::{Delimiter, Span, TokenTree};
 use std::cell::OnceCell;
 use std::fmt::{Debug, Formatter};
+use std::ops::RangeBounds;
 use std::rc::Rc;
+use std::slice::SliceIndex;
 
 /// Caching wrapper around [Span].
 ///
@@ -134,6 +136,7 @@ macro_rules! impl_token_struct_common {
                 &self.$inner_name
             }
 
+            #[allow(unused)]
             pub fn set_span(&mut self, span: Span) {
                 self.span.take();
                 self.$inner_name.set_span(span);
@@ -281,9 +284,12 @@ impl TokenBuffer {
     pub fn current(&self) -> Option<&Token> {
         self.tokens.get(self.pos)
     }
-    
-    pub fn current_slice(&self) -> &[Token] {
-        &self.tokens[self.pos..]
+
+    pub fn slice(
+        &self,
+        range: impl RangeBounds<usize> + SliceIndex<[Token], Output = [Token]>,
+    ) -> &[Token] {
+        &self.tokens[range]
     }
 
     pub fn peek(&self, offset: isize) -> Option<&Token> {

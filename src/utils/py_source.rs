@@ -1,5 +1,5 @@
-use crate::utils::rust_token::CSpan;
 use crate::utils::SpanEx;
+use crate::utils::rust_token::CSpan;
 use proc_macro2::Span;
 use std::borrow::Cow;
 use std::fmt::Write;
@@ -138,6 +138,19 @@ pub(crate) mod builder {
                 .append(segment);
         }
 
+        fn last_segment(&self) -> Option<&Rc<PySegment>> {
+            self.content
+                .last()
+                .and_then(|e| e.as_ref().left())
+                .and_then(|l| l.segments.last())
+        }
+
+        fn pop_last_segment_if(&mut self, predict: fn(&PySegment) -> bool) {
+            if let Some(Either::Left(line)) = self.content.last_mut() {
+                line.segments.pop_if(|seg| predict(seg));
+            }
+        }
+
         fn new_line(&mut self, indent: Option<usize>) {
             self.content.push(Either::Left(PyLine::new(indent)))
         }
@@ -166,6 +179,10 @@ pub(crate) mod builder {
 
         pub fn append(&mut self, segment: PySegment) {
             self.top().append(segment);
+        }
+
+        pub fn pop_last_segment_if(&mut self, predict: fn(&PySegment) -> bool) {
+            self.top().pop_last_segment_if(predict);
         }
 
         pub fn new_line(&mut self, indent: Option<usize>) {

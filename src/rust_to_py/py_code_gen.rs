@@ -9,7 +9,7 @@ use crate::utils::py_source::builder::PySourceBuilder;
 use crate::utils::py_source::{PySegment, PySource};
 use crate::utils::rust_token::{CSpan, Token, TokenBuffer};
 use either::Either;
-use proc_macro2::Spacing;
+use proc_macro2::{Delimiter, Spacing};
 use std::rc::Rc;
 
 const INDENT_SIZE: usize = 4;
@@ -55,34 +55,63 @@ impl PyCodeGen {
 
     /// Turn Rust tokens into Python code, assuming that they represent valid Python code.
     fn append_tokens_as_python_code(&mut self, mut tokens: TokenBuffer) {
-        fn need_space_between(last: Option<&Token>, current: &Token) -> bool {
-            // For now, this works with special patterns (e.g. f-strings).
-            // If more complicated patterns are added in the future, how decide if to insert space may need to be changed.
-            match (last, current) {
+        fn need_space_between(current_and_previous: &[Token]) -> bool {
+            match current_and_previous {
                 // between ident and literal
-                (
-                    Some(Token::Ident(_) | Token::Literal(_)),
+                [
+                    ..,
                     Token::Ident(_) | Token::Literal(_),
-                ) => true,
+                    Token::Ident(_) | Token::Literal(_),
+                ] => true,
 
                 // between two punct
-                (Some(Token::Punct(last_punct)), Token::Punct(_)) => {
+                [.., Token::Punct(last_punct), Token::Punct(_)] => {
                     last_punct.inner().spacing() == Spacing::Alone
                 }
 
                 // before punct
-                (Some(_), Token::Punct(punct)) => {
-                    !matches!(punct.inner().as_char(), ';' | ',' | ':')
+                [.., _, Token::Punct(punct)] => {
+                    punct.inner().spacing() == Spacing::Joint
+                        || !matches!(punct.inner().as_char(), ';' | ',' | ':' | '.')
                 }
+
+                // decorators
+                [Token::Punct(at), _] if at.eq_punct('@') => false,
+
+                // single star
+                [Token::Punct(star), _] if star.eq_punct('*') => false,
+                [Token::Punct(comma), Token::Punct(star), _]
+                    if comma.eq_punct(',') && star.eq_punct('*') =>
+                {
+                    false
+                }
+                // double star
+                [Token::Punct(star1), Token::Punct(star2), _]
+                    if star1.eq_punct('*') && star2.eq_punct('*') =>
+                {
+                    false
+                }
+                [
+                    Token::Punct(comma),
+                    Token::Punct(star1),
+                    Token::Punct(star2),
+                    _,
+                ] if comma.eq_punct(',') && star1.eq_punct('*') && star2.eq_punct('*') => false,
+
                 // after punct
-                (Some(Token::Punct(punct)), _) if punct.inner().spacing() == Spacing::Alone => true,
+                [.., Token::Punct(punct), _] => {
+                    punct.inner().spacing() == Spacing::Alone && !punct.eq_punct('.')
+                }
+
+                // other cases of before ident (e.g. before `as` in `a = foo() as Bar`)
+                [.., _, Token::Ident(_)] => true,
 
                 _ => false,
             }
         }
 
         while let Some(token) = tokens.current() {
-            if need_space_between(tokens.peek(-1), token) {
+            if need_space_between(tokens.slice(..=tokens.pos())) {
                 self.py.append(PySegment::new(" ", None));
             }
 
@@ -93,7 +122,7 @@ impl PyCodeGen {
                 Token::Punct(concat),
                 Token::Literal(string),
                 ..,
-            ] = tokens.current_slice()
+            ] = tokens.slice(tokens.pos()..)
                 && concat.eq_punct(CONCAT_MARKER)
                 && let repr = string.inner().to_string()
                 && repr.starts_with('"')
@@ -131,15 +160,18 @@ impl PyCodeGen {
                 }
                 Token::Group(group) => {
                     let delim = group.inner().delimiter();
-                    self.py.append(PySegment::new(
-                        delim.left_str().unwrap(),
-                        Some(group.span()),
-                    ));
-                    self.append_tokens_as_python_code(group.tokens());
-                    self.py.append(PySegment::new(
-                        delim.right_str().unwrap(),
-                        Some(group.span()),
-                    ));
+                    //TODO: figure out what should we do with Delimiter::None
+                    if delim != Delimiter::None {
+                        self.py.append(PySegment::new(
+                            delim.left_str().unwrap(),
+                            Some(group.span()),
+                        ));
+                        self.append_tokens_as_python_code(group.tokens());
+                        self.py.append(PySegment::new(
+                            delim.right_str().unwrap(),
+                            Some(group.span()),
+                        ));
+                    }
                 }
             }
             tokens.seek(1).unwrap();
@@ -403,6 +435,7 @@ impl PyCodeGen {
         region
             .iter()
             .for_each(|code| self.append_rust_code_as_parameter_list_element(code));
+        self.py.pop_last_segment_if(|seg| seg.code == ", ");
         self.py.append(PySegment::new(")", None));
     }
 
