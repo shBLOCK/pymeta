@@ -1,14 +1,21 @@
 [package]
 name = "pymeta"
-version = "0.1.0"
-authors = ["shBLOCK <shblock3@gmail.com>"]
+version = "0.1.0-alpha.1"
 description = "Metaprogramming Rust in Python!"
-#keywords = []
-#categories = []
+authors = ["shBLOCK <shblock3@gmail.com>"]
 edition = "2024"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/shBLOCK/pymeta"
+categories = [
+    "rust-patterns",
+    "development-tools::procedural-macro-helpers",
+    "development-tools::build-utils"
+]
+keywords = ["proc-macro", "python", "meta-programming", "codegen"]
 
 [lib]
 proc-macro = true
+
 
 [dependencies]
 proc-macro2 = { version = "1.0.106" }
@@ -24,12 +31,11 @@ unicode-ident = "1.0.24"
 log = { version = "0.4.29", optional = true }
 env_logger = { version = "0.11.9", optional = true }
 
+
 [features]
-debug_log = [
-    "dep:log",
-    "dep:env_logger"
-]
+debug_log = ["dep:log", "dep:env_logger"]
 nightly_proc_macro_span = ["proc-macro2/span-locations"]
+
 
 [profile.dev]
 debug = "line-tables-only"

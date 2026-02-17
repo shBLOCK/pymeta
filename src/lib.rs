@@ -18,6 +18,8 @@ mod py;
 mod rust_to_py;
 mod utils;
 
+/// TODO: detailed documentation will be available here,
+/// for now you can check out the examples in the crate's top-level documentation
 #[proc_macro]
 #[proc_macro_error2::proc_macro_error]
 pub fn pymeta(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
@@ -124,6 +126,7 @@ pub fn pymeta(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
                     DiagnosticLevel::Error,
                     err_text,
                 );
+                #[allow(unused_mut)]
                 let mut location_msg = format!(
                     "File \"{file}\", line {line}",
                     file = location.file.as_ref().map_left(|m| &m.filename),

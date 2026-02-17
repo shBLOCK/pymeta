@@ -13,18 +13,18 @@ Nightly Rust is required for now. Nightly features will be made gated behind fea
 
 # Features
 
-- Generate any arbitrary Rust code from Python
+- Generate & manipulate any arbitrary Rust code from Python
 - Write metaprogramming Python **alongside** normal Rust code
-    - Generate Rust code using any **Python control flow** (`for`, `if`, `match`, `with`, functions, etc.)
+    - Control code generation using any **Python control flow** (`for`, `if`, `match`, `with`, functions, etc.)
 - Support multiple **Python implementations**:
     - [Official CPython](https://www.python.org) (via [PyO3](https://pyo3.rs)) - Full Python ecosystem support (e.g.
-      Numpy)
+      numpy, pandas)
     - 🛠️ Coming soon: [RustPython](https://rustpython.github.io) - Pure Rust
     - 🛠️ Planned: [MicroPython](https://micropython.org) - Minimal bloat, fast compile time
 - Dev experience & IDE integration:
-    - Preserves all `Span` (source location) information throughout the entire code generation pipeline
-    - Trace back from generate code to the Python expression that generated it
-    - Report Python exceptions with traceback at precise Rust source code locations
+    - Preserves all `Span` (**source location**) information throughout the entire code generation pipeline
+      - **Trace back** from generate code to the Python expression that generated it
+      - Report Python exceptions with **traceback** at precise Rust source code locations
 - 🛠️ Planned: Writing custom macros and proc-macros in Python
 - 🛠️ Planned: Reusing code: Importing/exporting PyMeta Python modules from/to other Rust modules
 
@@ -43,11 +43,11 @@ Let's start by defining our vector structs.
 ```rust
 pymeta! {
     // `$` denotes the start of some Python code.
-    // Unlike normal Python, we need to use braces to make a code block.
+    // Unlike normal Python, we need to use braces to identify a code block.
     $for dims in range(2, 5):{
         // Normal Rust code can be written alongside metaprogramming Python code.
-        #[derive(Clone, Copy, PartialEq, Eq, Hash)]
-        // Two `$`s denote an inline Python expression.
+        #[derive(Clone, Copy, Debug, PartialEq)]
+        // Two `$`s denote an inline Python expression, the value of which will be converted into Rust code.
         // `~` is the "concat marker", we use it here so we get `Vec2`, not `Vec 2`.
         struct Vec~$dims$ {
             $for i in range(dims):{
@@ -117,7 +117,7 @@ pymeta! {
                         }
                     } $else:{
                         // Prefixed literals are reserved syntax in Rust,
-                        // so to use Python f-strings we need to work around this by using the concat marker. 
+                        // to work around this, `f"string"` can be written as `f~"string"`. 
                         fn $f~"{op_name.lower()}_assign"$(&mut self, rhs: Self) {
                             $for d in "xyzw"[:dims]:{
                                 self.$d$$op_sym + "="$ rhs.$d$;
@@ -424,9 +424,9 @@ pymeta! {
 
     $for in_dims in range(2, 5):{
         // The `rust()` function coerce its inputs to Rust code and
-        // append them into the currently active `Tokens` context (more about this later).
-        // If the last token is a "group" (`()`, `[]`, or `{}`), it is returned out so we can append to them later.
-        // Here we store the returned groups representing the body of our `trait` and `impl` so we can populate them later.
+        // emit (append) them into the currently active `Tokens` context (more about this later).
+        // If the last token is a "group" (`()`, `[]`, or `{}`), the `Group` object returned out so we can populate them later.
+        // Here we store the returned `Group`s representing the body of our `trait` and `impl`.
         $trait_body = rust(f~"trait Vec{in_dims}Swizzle {{}}");
         $impl_body = rust(f~"impl Vec{in_dims}Swizzle for Vec{in_dims} {{}}");
 
@@ -434,10 +434,10 @@ pymeta! {
             $out_name = f~"Vec{out_dims}";
             // Use the product function from the itertools module we imported earlier to generate swizzle arrangements.
             $for swizzle in itertools.product(*(["xyzw"[:in_dims]] * out_dims)):{
-                // Use the `with` statement to make a `Tokens` object the current context
-                // so code emitted from within the `with` block is appended to that `Tokens` object.
+                // Use the `with` statement to temporarily set a `Tokens` object as the current context.
+                // This means code emitted from within the `with` block are added to that `Tokens` object.
                 // In this case, `trait_body` and `impl_body` are actually `Group` objects,
-                // using `with` on them is a shorthand for `with group.tokens`.
+                // using `with` on a `Group` is a shorthand for `with group.tokens`.
                 $with trait_body:{
                     fn $"".join(swizzle)$(self) -> $out_name$;
                 }
@@ -532,12 +532,12 @@ trait Vec3Swizzle {
 
 ## Build Metadata
 ```rust
-// Note that due to caching, this may not update on every build,
+// Note that due to rustc's caching, this may not update on every build,
 // unless you do a `cargo clean` beforehand.
 const BUILD_TIME: &str = pymeta! {
     $from datetime import datetime;
-    // By default, strings from inline Python expressions are parsed as Rust code.
-    // Use `lit()` to make a literal instead.
+    // By default, a string is turned into Rust code by parsing their content.
+    // Here we use `lit()` to make a string literal instead.
     $lit(str(datetime.now()))$
 };
 
@@ -581,8 +581,6 @@ pymeta! {
     $from math import *;
     $N = 256;
     // `Token.join()` works like `str.join()`.
-    // In fact, you can actually use `str.join()` here and it would work,
-    // but that involves making a huge string and then parsing it into Rust code.
     const SIN_TABLE: [f32; $N$] = [$Punct(',').join(sin(i / N * tau) for i in range(N))$];
 }
 // or with numpy:
@@ -600,7 +598,7 @@ const SIN_TABLE: [f32; 256] = [0.0, 0.024541228522912288, 0.049067674327418015, 
 ## Semi-quoting
 ```rust
 pymeta! {
-    // The `Tokens` class can be used in a semi-quoting fashion.
+    // The `Tokens` class can be used for semi-quoting.
     // (A dedicated semi-quoting expression syntax may be added in the future.)
     $with Tokens() as signiture:{ fn say_hello(name: &str) }
     
@@ -638,7 +636,7 @@ impl Hello for MyStruct {
 
 </summary>
 
-This section contains obviously cursed examples that you should obviously not use in actual projects.
+This section contains ~~obviously cursed~~ fun examples that you should probably not use in actual projects.
 <br>
 That said, they do a good job at demonstrating the flexibility of PyMeta.
 
@@ -652,14 +650,71 @@ pymeta! {
 }
 
 // Macro expansion:
-// Well, this...: https://raw.githubusercontent.com/shBLOCK/pymeta/refs/heads/main/src/utils/rust_token.rs
+// Well, basically this... : https://raw.githubusercontent.com/shBLOCK/pymeta/refs/heads/main/src/utils/rust_token.rs
+```
+
+```rust
+#![feature(macro_metavar_expr)]
+
+// Inspiration: https://jon.how/likepython/
+macro_rules! like_rust {
+    // Proper support for Python-based proc-macro will be added in the future.
+    // For now, semi-quoting using `with Token():` can achieve a similar effect as a custom proc-macro.
+    ($($input:tt)*) => {
+        pymeta::pymeta! {
+            $$with Tokens() as input:{
+                $($input)*
+            }
+
+            $$WORDS = {"so", "like", "right", "totally", "something", "dude", "bro", "man", "just", "yo", "lol", "yeah", "uh", "um", "ah", "plz", "that", "or", "and", "then", "first", "things", "damn", "this", "thing"};
+
+            $$def process(tokens: Tokens):{
+                $$for token in tokens:{
+                    $$if isinstance(token, Ident) and token.string.lower() in WORDS:{
+                        $$continue;
+                    }
+                    $$if isinstance(token, Group):{
+                        $$token.tokens = Tokens(items=process(token.tokens));
+                    }
+                    $$yield token;
+                }
+            }
+
+            $$Tokens(items=process(input))$$
+        }
+    };
+}
+
+like_rust! {
+    yeah fn this main() and then {
+        uh so like for i in 0..16 or something {
+            then just match that i {
+                right first things first _ if i % 3 == 0 && i % 5 == 0 => then just totally println!("FizzBuzz") yo,
+                then like _ if i % 3 == 0 => just println!("Fizz") plz,
+                and yeah _ if i % 5 == 0 => just println!("Buzz") bro,
+                uh and _ => then dude just println!(that damn "{i}") lol
+            }
+        }
+    }
+}
+
+// Macro expansion:
+fn main() {
+    for i in 0..16 {
+        match i {
+            _ if i % 3 == 0 && i % 5 == 0 => println!("FizzBuzz"),
+            _ if i % 3 == 0 => println!("Fizz"),
+            _ if i % 5 == 0 => println!("Buzz"),
+            _ => println!("{i}"),
+        }
+    }
+}
 ```
 
 ```rust
 #![feature(macro_metavar_expr)]
 
 // *No I'm not vibe-coding, the Rust compiler is!*
-// (To be clear, this crate itself is NOT vibe-coded, and has nothing to do with AI by itself.)
 macro_rules! vibe {
     ($prompt:tt) => {
         pymeta::pymeta! {
@@ -893,6 +948,7 @@ impl Vec4 {
 </details>
 
 </details>
+
 
 # Attributions
 

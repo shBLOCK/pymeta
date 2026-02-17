@@ -138,13 +138,6 @@ pub(crate) mod builder {
                 .append(segment);
         }
 
-        fn last_segment(&self) -> Option<&Rc<PySegment>> {
-            self.content
-                .last()
-                .and_then(|e| e.as_ref().left())
-                .and_then(|l| l.segments.last())
-        }
-
         fn pop_last_segment_if(&mut self, predict: fn(&PySegment) -> bool) {
             if let Some(Either::Left(line)) = self.content.last_mut() {
                 line.segments.pop_if(|seg| predict(seg));

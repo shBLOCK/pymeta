@@ -37,7 +37,7 @@ enum Unquoted<'a> {
     Raw(&'a str),
 }
 
-fn unquote_rust_string_repr(repr: &str) -> Unquoted {
+fn unquote_rust_string_repr(repr: &'_ str) -> Unquoted<'_> {
     fn unquote_raw(repr: &str) -> &str {
         let i = repr.find('"').unwrap() + 1;
         &repr[i..(repr.len() - i)]

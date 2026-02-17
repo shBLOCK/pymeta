@@ -37,6 +37,7 @@ macro_rules! match_unwrap {
 pub(crate) use match_unwrap;
 
 
+#[cfg(feature = "nightly_proc_macro_span")]
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub(crate) struct LineColumn {
     /// 1-indexed
