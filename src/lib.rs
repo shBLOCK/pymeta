@@ -1,3 +1,4 @@
+#![doc = include_str!("../README.md")]
 #![feature(proc_macro_diagnostic)]
 #![cfg_attr(feature = "nightly_proc_macro_span", feature(proc_macro_span))]
 
