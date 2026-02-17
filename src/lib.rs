@@ -23,14 +23,6 @@ mod utils;
 #[proc_macro]
 #[proc_macro_error2::proc_macro_error]
 pub fn pymeta(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
-    #[cfg(feature = "debug_log")]
-    let _ = env_logger::builder()
-        .filter_level(log::LevelFilter::Trace)
-        .format_timestamp(None)
-        .format_module_path(false)
-        .format_source_path(true)
-        .try_init();
-
     let input = TokenBuffer::from_iter(TokenStream::from(input));
     let code_regions = CodeRegionParser::new().parse(input);
     let main = {
