@@ -35,12 +35,14 @@ class Token(ABC):
     @abstractmethod
     def __repr__(self): ...
 
-    def join(self, tokens: Iterable[Token]) -> Tokens:
-        result = Tokens()
-        for token in tokens:
-            result.append(token)
-            result.append(self)
-        result.pop()
+    def join(self, items: Iterable[CoerceToTokens]) -> Tokens:
+        tokens = Tokens()
+        first = True
+        for item in items:
+            if not first:
+                tokens.append(self)
+            first = False
+            tokens.append(item)
         return tokens
 
     @abstractmethod
@@ -65,8 +67,8 @@ class Tokens(MutableSequence[Token]):
         return cls._CTX_STACK[-1]
 
     @staticmethod
-    def _coerce(items: Iterable[CoerceToTokens], *, span: Span | None = None) -> list[Token]:
-        _results = []
+    def _coerce(items: Iterable[CoerceToTokens], *, span: Span | None = None, out: list[Token] | None = None) -> list[Token]:
+        _results = out if out is not None else []
         _group_stack: list[Group] = []
 
         def emit(token: Token):
@@ -363,11 +365,11 @@ class Tokens(MutableSequence[Token]):
     def __len__(self):
         return self._tokens.__len__()
 
-    def append(self, value: Token):
-        self._tokens.append(value)
+    def append(self, *args: CoerceToTokens):
+        Tokens._coerce(args, out=self._tokens)
 
-    def extend(self, values):
-        self._tokens.extend(values)
+    def extend(self, items: Iterable[CoerceToTokens]):
+        Tokens._coerce(items, out=self._tokens)
 
     def reverse(self):
         raise NotImplementedError
