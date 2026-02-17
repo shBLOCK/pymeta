@@ -1,5 +1,6 @@
 use super::PY_MARKER;
-use crate::utils::rust_token::{CSpan, Punct, Token, TokenBuffer};
+use crate::utils::rust_token::{Punct, Token, TokenBuffer};
+use crate::utils::span::CSpan;
 use proc_macro2::Delimiter;
 use std::rc::Rc;
 

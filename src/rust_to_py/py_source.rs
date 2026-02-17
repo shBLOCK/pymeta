@@ -1,5 +1,4 @@
-use crate::utils::SpanEx;
-use crate::utils::rust_token::CSpan;
+use crate::utils::span::{CSpan, SpanEx};
 use proc_macro2::Span;
 use std::borrow::Cow;
 use std::fmt::Write;

@@ -1,5 +1,5 @@
 use crate::rust_to_py::py_code_gen::PyMetaModule;
-use crate::utils::py_source::PySegment;
+use crate::rust_to_py::py_source::PySegment;
 use either::Either;
 use proc_macro2::Span;
 use std::cell::OnceCell;

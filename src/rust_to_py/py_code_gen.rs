@@ -1,19 +1,26 @@
+use super::py_source::builder::PySourceBuilder;
+use super::py_source::{PySegment, PySource};
 use crate::rust_to_py::CONCAT_MARKER;
 use crate::rust_to_py::code_regions::{
     CodeRegion, IdentWithPyExpr, PyExpr, PyStmt, PyStmtWithIndentBlock, RustCode, RustCodeWithBlock,
 };
 use crate::rust_to_py::utils::{DelimiterEx, PunctEx};
-use crate::utils::SpanEx;
 use crate::utils::escape::*;
-use crate::utils::py_source::builder::PySourceBuilder;
-use crate::utils::py_source::{PySegment, PySource};
-use crate::utils::rust_token::{CSpan, Token, TokenBuffer};
+use crate::utils::rust_token::{Token, TokenBuffer};
+use crate::utils::span::{CSpan, SpanEx};
 use either::Either;
 use proc_macro2::{Delimiter, Spacing};
 use std::rc::Rc;
 
 const INDENT_SIZE: usize = 4;
 
+/// Represents a Python module that's generated from the proc-macro input.
+///
+/// Currently, there's only the main module, but in the future imported modules will also be represented by this.
+///
+/// Aside from source code and metadata,
+/// this struct also carries additional information that need to be passed into the Python module
+/// when invoking the module.
 #[derive(Debug)]
 pub(crate) struct PyMetaModule {
     pub filename: String,
@@ -21,6 +28,9 @@ pub(crate) struct PyMetaModule {
     pub spans: Box<[Rc<CSpan>]>,
 }
 
+/// Represents the final "executable" ready to be executed by a Python implementation.
+///
+/// Currently, this only contains the [main] module, but in the future imported modules will also be here.
 #[derive(Debug)]
 pub(crate) struct PyMetaExecutable {
     pub main: Rc<PyMetaModule>,
@@ -37,6 +47,7 @@ impl PyMetaExecutable {
     }
 }
 
+/// Builder struct for generating a [PyMetaModule].
 pub(crate) struct PyCodeGen {
     py: PySourceBuilder,
     spans: Vec<Rc<CSpan>>,

@@ -1,62 +1,10 @@
-#[cfg(feature = "nightly_proc_macro_span")]
-use crate::utils::LineColumn;
+use crate::utils::span::CSpan;
 use proc_macro2::{Delimiter, Span, TokenTree};
 use std::cell::OnceCell;
 use std::fmt::{Debug, Formatter};
 use std::ops::RangeBounds;
 use std::rc::Rc;
 use std::slice::SliceIndex;
-
-/// Caching wrapper around [Span].
-///
-/// [Span] operations can be expansive, see: https://github.com/rust-lang/rust/issues/149331#issuecomment-3580649306
-pub(crate) struct CSpan {
-    span: Span,
-    #[cfg(feature = "nightly_proc_macro_span")]
-    start: OnceCell<LineColumn>,
-    #[cfg(feature = "nightly_proc_macro_span")]
-    end: OnceCell<LineColumn>,
-}
-
-impl CSpan {
-    pub fn inner(&self) -> Span {
-        self.span
-    }
-
-    #[cfg(feature = "nightly_proc_macro_span")]
-    pub fn start(&self) -> LineColumn {
-        *self.start.get_or_init(|| self.span.start().into())
-    }
-
-    #[cfg(feature = "nightly_proc_macro_span")]
-    pub fn end(&self) -> LineColumn {
-        *self.end.get_or_init(|| self.span.end().into())
-    }
-}
-
-impl From<Span> for CSpan {
-    fn from(value: Span) -> Self {
-        Self {
-            span: value,
-            #[cfg(feature = "nightly_proc_macro_span")]
-            start: OnceCell::new(),
-            #[cfg(feature = "nightly_proc_macro_span")]
-            end: OnceCell::new(),
-        }
-    }
-}
-
-impl Debug for CSpan {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "C{:?}", self.span)
-    }
-}
-
-impl From<&CSpan> for Span {
-    fn from(value: &CSpan) -> Self {
-        value.span
-    }
-}
 
 #[derive(Clone)]
 pub(crate) struct Ident {
@@ -253,6 +201,7 @@ impl Debug for Token {
     }
 }
 
+/// A version of [proc_macro2::TokenStream] that's more useful for parsing.
 #[derive(Clone, Debug)]
 pub(crate) struct TokenBuffer {
     tokens: Rc<[Token]>,

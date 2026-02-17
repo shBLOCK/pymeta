@@ -147,7 +147,7 @@ pub(crate) fn execute(exe: PyMetaExecutable) -> PyMetaExecutionResult {
 
 #[pymodule]
 mod _pymeta {
-    use crate::utils::rust_token::CSpan;
+    use crate::utils::span::CSpan;
     use proc_macro2::{Delimiter, Group, Ident, Literal, Punct, Spacing, Span, TokenStream, TokenTree};
     use pyo3::exceptions::PyValueError;
     use pyo3::prelude::*;

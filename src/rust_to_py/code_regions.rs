@@ -26,15 +26,13 @@ pub(crate) enum RustCode {
     },
 
     /// ```
-    /// const FOO = @u16(2 ** 10)@;
+    /// const FOO = $u16(2 ** 10)$;
     /// ```
-    /// TODO: better docs
     PyExpr(PyExpr),
 
     /// ```
-    /// const FOO_@"A" * 10@_BAR = 42;
+    /// const FOO~$"A" * 10$~BAR = 42;
     /// ```
-    /// TODO: better docs
     IdentWithPyExpr(IdentWithPyExpr),
 }
 
@@ -77,17 +75,17 @@ pub(crate) enum CodeRegion {
     ///
     /// Something like:
     /// ```
-    /// @for i in range(10):{
+    /// $for i in range(10):{
     ///     ...
     /// }
     /// ```
     /// Or:
     /// ```
-    /// @if foo:{
+    /// $if foo:{
     ///     ...
-    /// } @else if bar:{
+    /// } $else if bar:{
     ///     ...
-    /// } @else:{
+    /// } $else:{
     ///     ...
     /// }
     /// ```
@@ -122,6 +120,7 @@ pub(crate) mod parser {
     use proc_macro_error2::abort;
     use std::rc::Rc;
 
+    /// [Self::parse] parses a [TokenBuffer] into [CodeRegion]s
     pub(crate) struct CodeRegionParser {
         regions: Vec<CodeRegion>,
     }
