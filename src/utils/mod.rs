@@ -1,7 +1,6 @@
 use proc_macro2::Span;
 
 pub(crate) mod escape;
-pub(crate) mod logging;
 pub(crate) mod py_source;
 pub(crate) mod rust_token;
 
