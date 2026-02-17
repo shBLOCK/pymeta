@@ -95,7 +95,17 @@ pub fn pymeta(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
                     }
                     write!(text, ", in {}", frame.frame_name).unwrap();
 
-                    diagnostic = diagnostic.note(text);
+                    #[cfg(feature = "nightly_proc_macro_span")]
+                    if let Some(src_span) = frame.location.src_span() {
+                        diagnostic = diagnostic.span_note(src_span.unwrap(), text);
+                    } else {
+                        diagnostic = diagnostic.note(text);
+                    }
+
+                    #[cfg(not(feature = "nightly_proc_macro_span"))]
+                    {
+                        diagnostic = diagnostic.note(text);
+                    }
                 }
 
                 // let module = exe_result.exe.main;
