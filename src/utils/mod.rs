@@ -1,9 +1,9 @@
 use proc_macro2::Span;
 
+pub(crate) mod escape;
 pub(crate) mod logging;
 pub(crate) mod py_source;
 pub(crate) mod rust_token;
-pub(crate) mod escape;
 
 pub(crate) trait SpanOptionEx {
     fn join_or_fallback(self, other: Self) -> Span;
@@ -35,7 +35,6 @@ macro_rules! match_unwrap {
     }};
 }
 pub(crate) use match_unwrap;
-
 
 #[cfg(feature = "nightly_proc_macro_span")]
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]

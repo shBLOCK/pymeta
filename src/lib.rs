@@ -39,9 +39,7 @@ pub fn pymeta(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
         codegen.finish(String::from("<PyMeta main>"))
     };
 
-    let exe_result = py::impl_pyo3::execute(PyMetaExecutable {
-        main: Rc::new(main),
-    });
+    let exe_result = py::impl_pyo3::execute(PyMetaExecutable { main: Rc::new(main) });
 
     if let Err(ref error) = exe_result.result {
         let err_text = format!("{}{}: {}", PY_MARKER, error.class, error.msg);
@@ -84,14 +82,8 @@ pub fn pymeta(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
                     }
                     last_frame = Some(frame);
 
-                    let filename = frame
-                        .location
-                        .file
-                        .as_ref()
-                        .map_left(|m| &m.filename)
-                        .into_inner();
-                    let mut text =
-                        format!("|  File \"{filename}\", line {}", frame.location.start_line);
+                    let filename = frame.location.file.as_ref().map_left(|m| &m.filename).into_inner();
+                    let mut text = format!("|  File \"{filename}\", line {}", frame.location.start_line);
                     #[cfg(feature = "nightly_proc_macro_span")]
                     if let Some(src_span) = frame.location.src_span() {
                         write!(text, " (Rust line {})", src_span.start().line).unwrap();
@@ -138,12 +130,7 @@ pub fn pymeta(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
                 }
                 diagnostic.note(location_msg).emit();
             }
-            None => Diagnostic::spanned(
-                proc_macro::Span::call_site(),
-                DiagnosticLevel::Error,
-                err_text,
-            )
-            .emit(),
+            None => Diagnostic::spanned(proc_macro::Span::call_site(), DiagnosticLevel::Error, err_text).emit(),
         }
 
         {
@@ -162,8 +149,5 @@ pub fn pymeta(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
         }
     }
 
-    exe_result
-        .result
-        .unwrap_or_else(|_| TokenStream::new())
-        .into()
+    exe_result.result.unwrap_or_else(|_| TokenStream::new()).into()
 }

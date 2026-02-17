@@ -285,10 +285,7 @@ impl TokenBuffer {
         self.tokens.get(self.pos)
     }
 
-    pub fn slice(
-        &self,
-        range: impl RangeBounds<usize> + SliceIndex<[Token], Output = [Token]>,
-    ) -> &[Token] {
+    pub fn slice(&self, range: impl RangeBounds<usize> + SliceIndex<[Token], Output = [Token]>) -> &[Token] {
         &self.tokens[range]
     }
 

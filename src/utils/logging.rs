@@ -2,11 +2,11 @@ macro_rules! make_optional_log_wrapper {
     ($dollar:tt, $name:ident, $internal_name:ident) => {
         #[allow(unused)]
         macro_rules! $internal_name {
-            ($dollar($dollar args:tt)+) => {
-                #[cfg(feature = "log")]
-                ::log::$name!($dollar($dollar args)+)
-            };
-        }
+                                            ($dollar($dollar args:tt)+) => {
+                                                #[cfg(feature = "log")]
+                                                ::log::$name!($dollar($dollar args)+)
+                                            };
+                                        }
         #[allow(unused)]
         pub(crate) use $internal_name as $name;
     };

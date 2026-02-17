@@ -48,9 +48,7 @@ impl PyLine {
 
     pub fn add_to_string(&self, string: &mut String) {
         string.extend(repeat_n(' ', self.indent));
-        self.segments
-            .iter()
-            .for_each(|segment| segment.add_to_string(string));
+        self.segments.iter().for_each(|segment| segment.add_to_string(string));
         string.push('\n');
     }
 }
@@ -63,9 +61,7 @@ pub(crate) struct PySource {
 impl PySource {
     pub fn source_code(&self) -> String {
         let mut string = String::new();
-        self.lines
-            .iter()
-            .for_each(|line| line.add_to_string(&mut string));
+        self.lines.iter().for_each(|line| line.add_to_string(&mut string));
         string
     }
 
@@ -76,12 +72,7 @@ impl PySource {
         let lineno_digits = self.lines.len().ilog10() + 1;
         let mut string = String::new();
         for (lineno, line) in (1..).zip(self.lines.iter()) {
-            write!(
-                string,
-                "{lineno:>width$} | ",
-                width = lineno_digits as usize
-            )
-            .unwrap();
+            write!(string, "{lineno:>width$} | ", width = lineno_digits as usize).unwrap();
             line.add_to_string(&mut string);
         }
         string.pop(); // pop last newline
@@ -218,11 +209,8 @@ pub(crate) mod builder {
                     // strip common indent
                     for content in block.content.iter_mut() {
                         if let Either::Left(line) = content {
-                            line.indent = Some(
-                                last_indent
-                                    + block.indent
-                                    + line.indent.map(|i| i - min_indent).unwrap_or(0),
-                            );
+                            line.indent =
+                                Some(last_indent + block.indent + line.indent.map(|i| i - min_indent).unwrap_or(0));
                         }
                     }
 
@@ -237,9 +225,7 @@ pub(crate) mod builder {
                                 last_indent = line.indent;
                                 self.lines.push(line);
                             }
-                            Either::Right(block) => {
-                                self.process(&mut block.borrow_mut(), last_indent)
-                            }
+                            Either::Right(block) => self.process(&mut block.borrow_mut(), last_indent),
                         }
                     }
                 }

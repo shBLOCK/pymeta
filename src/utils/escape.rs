@@ -43,18 +43,10 @@ fn unquote_rust_string_repr(repr: &'_ str) -> Unquoted<'_> {
         &repr[i..(repr.len() - i)]
     }
     match repr.as_bytes() {
-        [b'"', content @ .., b'"'] => {
-            Unquoted::Normal(unsafe { str::from_utf8_unchecked(content) })
-        }
-        [b'r', quoted @ ..] => {
-            Unquoted::Raw(unquote_raw(unsafe { str::from_utf8_unchecked(quoted) }))
-        }
-        [b'b' | b'c', b'"', content @ .., b'"'] => {
-            Unquoted::Normal(unsafe { str::from_utf8_unchecked(content) })
-        }
-        [b'b' | b'c', b'r', quoted @ ..] => {
-            Unquoted::Raw(unquote_raw(unsafe { str::from_utf8_unchecked(quoted) }))
-        }
+        [b'"', content @ .., b'"'] => Unquoted::Normal(unsafe { str::from_utf8_unchecked(content) }),
+        [b'r', quoted @ ..] => Unquoted::Raw(unquote_raw(unsafe { str::from_utf8_unchecked(quoted) })),
+        [b'b' | b'c', b'"', content @ .., b'"'] => Unquoted::Normal(unsafe { str::from_utf8_unchecked(content) }),
+        [b'b' | b'c', b'r', quoted @ ..] => Unquoted::Raw(unquote_raw(unsafe { str::from_utf8_unchecked(quoted) })),
         _ => panic!("Invalid Rust string literal repr: {repr:?}"),
     }
 }
@@ -102,18 +94,14 @@ pub(crate) fn rust_c_string_repr_to_python_bytes_repr(repr: &str) -> String {
 
     match unquote_rust_string_repr(repr) {
         Unquoted::Normal(repr) => {
-            rustc_literal_escaper::unescape_c_str(repr, |_, result| {
-                match result.expect("Unescape failed") {
-                    MixedUnit::Char(char) => char
-                        .get()
-                        .encode_utf8(&mut [0; 4])
-                        .as_bytes()
-                        .into_iter()
-                        .for_each(|&byte| append_byte_escaped_for_python(&mut py_repr, byte)),
-                    MixedUnit::HighByte(byte) => {
-                        append_byte_escaped_for_python(&mut py_repr, byte.get())
-                    }
-                }
+            rustc_literal_escaper::unescape_c_str(repr, |_, result| match result.expect("Unescape failed") {
+                MixedUnit::Char(char) => char
+                    .get()
+                    .encode_utf8(&mut [0; 4])
+                    .as_bytes()
+                    .into_iter()
+                    .for_each(|&byte| append_byte_escaped_for_python(&mut py_repr, byte)),
+                MixedUnit::HighByte(byte) => append_byte_escaped_for_python(&mut py_repr, byte.get()),
             });
         }
         Unquoted::Raw(repr) => {

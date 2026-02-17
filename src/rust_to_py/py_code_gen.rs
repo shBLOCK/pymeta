@@ -65,9 +65,7 @@ impl PyCodeGen {
                 ] => true,
 
                 // between two punct
-                [.., Token::Punct(last_punct), Token::Punct(_)] => {
-                    last_punct.inner().spacing() == Spacing::Alone
-                }
+                [.., Token::Punct(last_punct), Token::Punct(_)] => last_punct.inner().spacing() == Spacing::Alone,
 
                 // before punct
                 [.., _, Token::Punct(punct)] => {
@@ -80,28 +78,17 @@ impl PyCodeGen {
 
                 // single star
                 [Token::Punct(star), _] if star.eq_punct('*') => false,
-                [Token::Punct(comma), Token::Punct(star), _]
-                    if comma.eq_punct(',') && star.eq_punct('*') =>
-                {
-                    false
-                }
+                [Token::Punct(comma), Token::Punct(star), _] if comma.eq_punct(',') && star.eq_punct('*') => false,
                 // double star
-                [Token::Punct(star1), Token::Punct(star2), _]
-                    if star1.eq_punct('*') && star2.eq_punct('*') =>
+                [Token::Punct(star1), Token::Punct(star2), _] if star1.eq_punct('*') && star2.eq_punct('*') => false,
+                [Token::Punct(comma), Token::Punct(star1), Token::Punct(star2), _]
+                    if comma.eq_punct(',') && star1.eq_punct('*') && star2.eq_punct('*') =>
                 {
                     false
                 }
-                [
-                    Token::Punct(comma),
-                    Token::Punct(star1),
-                    Token::Punct(star2),
-                    _,
-                ] if comma.eq_punct(',') && star1.eq_punct('*') && star2.eq_punct('*') => false,
 
                 // after punct
-                [.., Token::Punct(punct), _] => {
-                    punct.inner().spacing() == Spacing::Alone && !punct.eq_punct('.')
-                }
+                [.., Token::Punct(punct), _] => punct.inner().spacing() == Spacing::Alone && !punct.eq_punct('.'),
 
                 // other cases of before ident (e.g. before `as` in `a = foo() as Bar`)
                 [.., _, Token::Ident(_)] => true,
@@ -117,20 +104,14 @@ impl PyCodeGen {
 
             // workaround `f"string"` being reserved syntax in Rust
             // `f~"string"` => `f"string"`
-            if let [
-                Token::Ident(prefix),
-                Token::Punct(concat),
-                Token::Literal(string),
-                ..,
-            ] = tokens.slice(tokens.pos()..)
+            if let [Token::Ident(prefix), Token::Punct(concat), Token::Literal(string), ..] =
+                tokens.slice(tokens.pos()..)
                 && concat.eq_punct(CONCAT_MARKER)
                 && let repr = string.inner().to_string()
                 && repr.starts_with('"')
             {
-                self.py.append(PySegment::new(
-                    prefix.inner().to_string(),
-                    Some(prefix.span()),
-                ));
+                self.py
+                    .append(PySegment::new(prefix.inner().to_string(), Some(prefix.span())));
                 self.py.append(PySegment::new(
                     Self::rust_literal_repr_to_python_code(repr),
                     Some(string.span()),
@@ -141,15 +122,12 @@ impl PyCodeGen {
 
             match token {
                 Token::Ident(ident) => {
-                    self.py.append(PySegment::new(
-                        ident.inner().to_string(),
-                        Some(ident.span()),
-                    ));
+                    self.py
+                        .append(PySegment::new(ident.inner().to_string(), Some(ident.span())));
                 }
                 Token::Punct(punct) => {
                     if !punct.eq_punct(';') {
-                        self.py
-                            .append(PySegment::new(punct.as_str(), Some(punct.span())));
+                        self.py.append(PySegment::new(punct.as_str(), Some(punct.span())));
                     }
                 }
                 Token::Literal(literal) => {
@@ -162,15 +140,11 @@ impl PyCodeGen {
                     let delim = group.inner().delimiter();
                     //TODO: figure out what should we do with Delimiter::None
                     if delim != Delimiter::None {
-                        self.py.append(PySegment::new(
-                            delim.left_str().unwrap(),
-                            Some(group.span()),
-                        ));
+                        self.py
+                            .append(PySegment::new(delim.left_str().unwrap(), Some(group.span())));
                         self.append_tokens_as_python_code(group.tokens());
-                        self.py.append(PySegment::new(
-                            delim.right_str().unwrap(),
-                            Some(group.span()),
-                        ));
+                        self.py
+                            .append(PySegment::new(delim.right_str().unwrap(), Some(group.span())));
                     }
                 }
             }
@@ -190,8 +164,7 @@ impl PyCodeGen {
             self.append_code_regions(region.block.iter());
         } else {
             self.py.new_line(None);
-            self.py
-                .append(PySegment::new("pass", Some(region.group.span())));
+            self.py.append(PySegment::new("pass", Some(region.group.span())));
         }
         self.py.pop_indent_block();
     }
@@ -199,8 +172,7 @@ impl PyCodeGen {
     fn append_span(&mut self, span: Rc<CSpan>) {
         self.spans.push(span.clone());
         let id = self.spans.len() - 1;
-        self.py
-            .append(PySegment::new(format!("__spans[{id}]"), Some(span)))
+        self.py.append(PySegment::new(format!("__spans[{id}]"), Some(span)))
     }
 
     fn append_inline_py_expr(&mut self, expr: &PyExpr) {
@@ -232,22 +204,17 @@ impl PyCodeGen {
         };
         let full_span = Rc::new(CSpan::from(start_span.join_or_fallback(Some(end_span))));
 
-        self.py
-            .append(PySegment::new("Ident(f\"", Some(Rc::clone(&full_span))));
+        self.py.append(PySegment::new("Ident(f\"", Some(Rc::clone(&full_span))));
         for part in parts {
             match part {
                 Either::Left(ident) => {
-                    self.py.append(PySegment::new(
-                        ident.inner().to_string(),
-                        Some(ident.span()),
-                    ));
+                    self.py
+                        .append(PySegment::new(ident.inner().to_string(), Some(ident.span())));
                 }
                 Either::Right(expr) => {
-                    self.py
-                        .append(PySegment::new("{", Some(expr.start_marker.span())));
+                    self.py.append(PySegment::new("{", Some(expr.start_marker.span())));
                     self.append_inline_py_expr(expr);
-                    self.py
-                        .append(PySegment::new("}", Some(expr.end_marker.span())));
+                    self.py.append(PySegment::new("}", Some(expr.end_marker.span())));
                 }
             }
         }
@@ -289,33 +256,26 @@ impl PyCodeGen {
                     let repr = literal.inner().to_string();
                     match repr.as_bytes() {
                         [b'"', ..] | [b'r', b'"', ..] => {
-                            self.py
-                                .append(PySegment::new(r#"StrLiteral("#, Some(literal.span())));
+                            self.py.append(PySegment::new(r#"StrLiteral("#, Some(literal.span())));
                             self.py.append(PySegment::new(
                                 rust_string_repr_to_python_str_repr(&repr),
                                 Some(literal.span()),
                             ));
-                            self.py
-                                .append(PySegment::new(r#", "str", "#, Some(literal.span())));
+                            self.py.append(PySegment::new(r#", "str", "#, Some(literal.span())));
                         }
                         [b'\'', ..] => {
                             self.py.append(PySegment::new(
-                                format!(
-                                    r#"StrLiteral({}, "chr", "#,
-                                    rust_char_repr_to_python_str_repr(&repr)
-                                ),
+                                format!(r#"StrLiteral({}, "chr", "#, rust_char_repr_to_python_str_repr(&repr)),
                                 Some(literal.span()),
                             ));
                         }
                         [b'b', b'"', ..] | [b'b', b'r', b'"', ..] => {
-                            self.py
-                                .append(PySegment::new(r#"BytesLiteral("#, Some(literal.span())));
+                            self.py.append(PySegment::new(r#"BytesLiteral("#, Some(literal.span())));
                             self.py.append(PySegment::new(
                                 rust_bytes_repr_to_python_bytes_repr(&repr),
                                 Some(literal.span()),
                             ));
-                            self.py
-                                .append(PySegment::new(r#", "bytes", "#, Some(literal.span())));
+                            self.py.append(PySegment::new(r#", "bytes", "#, Some(literal.span())));
                         }
                         [b'b', b'\'', ..] => {
                             self.py.append(PySegment::new(
@@ -327,24 +287,17 @@ impl PyCodeGen {
                             ));
                         }
                         [b'c', ..] => {
-                            self.py
-                                .append(PySegment::new(r#"BytesLiteral("#, Some(literal.span())));
+                            self.py.append(PySegment::new(r#"BytesLiteral("#, Some(literal.span())));
                             self.py.append(PySegment::new(
                                 rust_c_string_repr_to_python_bytes_repr(&repr),
                                 Some(literal.span()),
                             ));
-                            self.py
-                                .append(PySegment::new(r#", "cstr", "#, Some(literal.span())));
+                            self.py.append(PySegment::new(r#", "cstr", "#, Some(literal.span())));
                         }
                         repr @ [b'0'..=b'9', ..] => {
                             let is_float = match repr {
                                 [b'0', b'x', ..] => false,
-                                repr if repr
-                                    .iter()
-                                    .any(|b| matches!(b, b'.' | b'e' | b'E' | b'f')) =>
-                                {
-                                    true
-                                }
+                                repr if repr.iter().any(|b| matches!(b, b'.' | b'e' | b'E' | b'f')) => true,
                                 _ => false,
                             };
 
@@ -363,11 +316,7 @@ impl PyCodeGen {
                                 None => unsafe { (str::from_utf8_unchecked(repr), "None") },
                             };
 
-                            let cls_name = if is_float {
-                                "FloatLiteral"
-                            } else {
-                                "IntLiteral"
-                            };
+                            let cls_name = if is_float { "FloatLiteral" } else { "IntLiteral" };
 
                             self.py.append(PySegment::new(
                                 format!(r#"{cls_name}._new("{num}", {num}, {type_obj}, "#),
@@ -405,11 +354,9 @@ impl PyCodeGen {
                         .inner()
                         .join_or_fallback(Some(expr.end_marker.span().inner())),
                 ));
-                self.py
-                    .append(PySegment::new("Tokens(", Some(Rc::clone(&span))));
+                self.py.append(PySegment::new("Tokens(", Some(Rc::clone(&span))));
                 self.append_inline_py_expr(expr);
-                self.py
-                    .append(PySegment::new(", span=", Some(Rc::clone(&span))));
+                self.py.append(PySegment::new(", span=", Some(Rc::clone(&span))));
                 self.append_span(Rc::clone(&span));
                 self.py.append(PySegment::new(")", Some(span)));
                 self.py.append(PySegment::new(", ", None));
@@ -468,9 +415,7 @@ impl PyCodeGen {
             CodeRegion::RustCode(region) => self.append_rust_code_region(region),
             CodeRegion::RustCodeWithBlock(region) => self.append_rust_multiline_block(region),
             CodeRegion::PyStmt(line) => self.append_py_logical_line(line),
-            CodeRegion::PyStmtWithIndentBlock(region) => {
-                self.append_py_stmt_with_indent_block(region)
-            }
+            CodeRegion::PyStmtWithIndentBlock(region) => self.append_py_stmt_with_indent_block(region),
         }
     }
 

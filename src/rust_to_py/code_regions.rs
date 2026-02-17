@@ -134,9 +134,7 @@ pub(crate) mod parser {
 
     impl CodeRegionParser {
         pub(crate) fn new() -> Self {
-            Self {
-                regions: Vec::new(),
-            }
+            Self { regions: Vec::new() }
         }
 
         fn parse_py(tokens: &mut TokenBuffer) -> Option<ParsePyResult> {
@@ -204,9 +202,7 @@ pub(crate) mod parser {
             while !tokens.exausted() {
                 if let Some(py) = Self::parse_py(&mut tokens) {
                     match (self.regions.last_mut(), py) {
-                        (_, ParsePyResult::Stmt(stmt)) => {
-                            self.regions.push(CodeRegion::PyStmt(stmt))
-                        }
+                        (_, ParsePyResult::Stmt(stmt)) => self.regions.push(CodeRegion::PyStmt(stmt)),
                         (_, ParsePyResult::StmtWithIndentBlock(stmt)) => {
                             self.regions.push(CodeRegion::PyStmtWithIndentBlock(stmt))
                         }
@@ -226,8 +222,7 @@ pub(crate) mod parser {
                                     RustCode::Code(Token::Punct(concat)),
                                 ] if concat.eq_punct(CONCAT_MARKER) => {
                                     let _concat_marker = code.pop();
-                                    let RustCode::Code(Token::Ident(ident)) = code.pop().unwrap()
-                                    else {
+                                    let RustCode::Code(Token::Ident(ident)) = code.pop().unwrap() else {
                                         unreachable!()
                                     }; // ident
                                     code.push(RustCode::IdentWithPyExpr(vec![
@@ -238,9 +233,9 @@ pub(crate) mod parser {
                                 _ => code.push(RustCode::PyExpr(expr)),
                             }
                         }
-                        (_, ParsePyResult::Expr(expr)) => self
-                            .regions
-                            .push(CodeRegion::RustCode(vec![RustCode::PyExpr(expr)])),
+                        (_, ParsePyResult::Expr(expr)) => {
+                            self.regions.push(CodeRegion::RustCode(vec![RustCode::PyExpr(expr)]))
+                        }
                     }
                 } else {
                     let token = if tokens.is_py_marker_escape() {
@@ -278,13 +273,11 @@ pub(crate) mod parser {
                                     .pop_if(|region| matches!(region, CodeRegion::RustCode(_)))
                                     .map(|region| match_unwrap!(code in CodeRegion::RustCode(code) = region));
 
-                                self.regions.push(CodeRegion::RustCodeWithBlock(
-                                    RustCodeWithBlock {
-                                        code: code.unwrap_or_else(Vec::new).into_boxed_slice(),
-                                        group: Rc::clone(group),
-                                        block: group_regions,
-                                    },
-                                ));
+                                self.regions.push(CodeRegion::RustCodeWithBlock(RustCodeWithBlock {
+                                    code: code.unwrap_or_else(Vec::new).into_boxed_slice(),
+                                    group: Rc::clone(group),
+                                    block: group_regions,
+                                }));
                             }
                         }
                         token => {
@@ -300,19 +293,16 @@ pub(crate) mod parser {
                                 // Python expr followed by CONCAT_MARKER and then by the current token which is an ident => make a IdentWithPyExpr
                                 let _concat_marker = code.pop();
                                 // if last is PyExpr, turn it into a IdentWithPyExpr
-                                if let Some(expr) =
-                                    code.pop_if(|expr| matches!(expr, RustCode::PyExpr(_)))
-                                {
+                                if let Some(expr) = code.pop_if(|expr| matches!(expr, RustCode::PyExpr(_))) {
                                     code.push(RustCode::IdentWithPyExpr(vec![Either::Right(
                                         match_unwrap!(expr in RustCode::PyExpr(expr) = expr),
                                     )]));
                                 }
                                 match_unwrap!(iwp in Some(RustCode::IdentWithPyExpr(iwp)) = code.last_mut())
-                                        .push(Either::Left(Rc::clone(ident)));
+                                    .push(Either::Left(Rc::clone(ident)));
                             } else {
                                 // a normal token
-                                self.get_or_put_rust_code_region()
-                                    .push(RustCode::Code(token.clone()));
+                                self.get_or_put_rust_code_region().push(RustCode::Code(token.clone()));
 
                                 // start a new region on semicolons to make the resulting Python code more readable
                                 //TODO: only do this for braces, or only when the region is too long
