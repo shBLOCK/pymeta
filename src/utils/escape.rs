@@ -3,7 +3,7 @@ use std::fmt::Write;
 
 /// Append `byte` into `string` as if `string` is the content of a Python bytes literal, escape when necessary.
 ///
-/// https://docs.python.org/3/reference/lexical_analysis.html#escape-sequences
+/// <https://docs.python.org/3/reference/lexical_analysis.html#escape-sequences>
 fn append_byte_escaped_for_python(string: &mut String, byte: u8) {
     match byte {
         b'\\' => string.push_str(r"\\"),
@@ -23,7 +23,7 @@ fn append_byte_escaped_for_python(string: &mut String, byte: u8) {
 
 /// Append `char` into `string` as if `string` is the content of a Python string literal, escape when necessary.
 ///
-/// https://docs.python.org/3/reference/lexical_analysis.html#escape-sequences
+/// <https://docs.python.org/3/reference/lexical_analysis.html#escape-sequences>
 fn append_char_escaped_for_python(string: &mut String, char: char) {
     if char.is_ascii() {
         append_byte_escaped_for_python(string, char as u8);

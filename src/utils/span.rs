@@ -31,7 +31,7 @@ impl SpanEx for Span {
 
 /// Caching wrapper around [Span].
 ///
-/// [Span] operations can be expansive, see: https://github.com/rust-lang/rust/issues/149331#issuecomment-3580649306
+/// [Span] operations can be expansive, see: <https://github.com/rust-lang/rust/issues/149331#issuecomment-3580649306>
 pub(crate) struct CSpan {
     span: Span,
     #[cfg(feature = "nightly_proc_macro_span")]

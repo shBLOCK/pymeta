@@ -30,7 +30,7 @@ pub(crate) struct PyMetaModule {
 
 /// Represents the final "executable" ready to be executed by a Python implementation.
 ///
-/// Currently, this only contains the [main] module, but in the future imported modules will also be here.
+/// Currently, this only contains the `main` module, but in the future imported modules will also be here.
 #[derive(Debug)]
 pub(crate) struct PyMetaExecutable {
     pub main: Rc<PyMetaModule>,
