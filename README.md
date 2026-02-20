@@ -1,6 +1,10 @@
 PyMeta - Metaprogramming Rust in Python!
 ---
 
+[![GitHub Repo](https://img.shields.io/badge/GitHub-shBLOCK/pymeta-purple?logo=github)](https://github.com/shBLOCK/pymeta)
+[![crates.io Version](https://img.shields.io/crates/v/pymeta?logo=rust)](https://crates.io/crates/pymeta)
+[![docs.rs](https://img.shields.io/badge/docs.rs-pymeta-blue?logo=docs.rs)](https://docs.rs/pymeta)
+
 **PyMeta** offers proc-macros to use **Python** as a metaprogramming language for Rust.
 
 Currently, only CPython via PyO3 is supported, so a Python interpreter needs to be installed for this crate to work.
