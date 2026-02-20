@@ -954,6 +954,43 @@ impl Vec4 {
 </details>
 
 
+# Deep Dive
+This section covers how this crate works under the hood.
+If you just want to use this crate, this section is probably not very relevant.
+
+### Step 1: Parsing input Rust code to "Code Regions"
+The input is parsed into 4 types of "Code Regions".
+This step can be thought of as the "lexing" step in compilers.
+- [CodeRegion::RustCode](crate::rust_to_py::code_region::CodeRegion::RustCode): An snippet of normal Rust code.
+  This may contain inline Python expressions, but not Python statements.
+  This will be converted into a single `rust()` call in the generated Python code.
+- [CodeRegion::RustCodeWithBlock](crate::rust_to_py::code_region::CodeRegion::RustCodeWithBlock): A RustCode followed by a code block.
+  This will be converted into a `with rust():` statement in the generated Python code.
+- [CodeRegion::PyStmt](crate::rust_to_py::code_region::CodeRegion::PyStmt): A Python statement, e.g. `a = 42`, `print("Hello World")`.
+- [CodeRegion::PyStmtWithIndentBlock](crate::rust_to_py::code_region::CodeRegion::PyStmtWithIndentBlock): A Python statement with an indented code block, e.g. `for`, `if`.
+
+This step also handles escaped markers (`<$>`), un-escaping them.
+<br>
+See the docs on the [CodeRegion](crate::rust_to_py::code_region::CodeRegion) struct for more details.
+
+### Step 2: Python Codegen
+Here, code regions are turned into Python code one by one.
+This step mostly happens in the [PyCodeGen](crate::rust_to_py::py_code_gen::PyCodeGen) struct.
+<br>
+Python source code is represented by the [PySource](crate::rust_to_py::py_source::PySource) struct,
+which contains [PySegment](crate::rust_to_py::py_source::PySegment)s each containing a source code String
+and optionally a Span for the Rust code that generated this PySegment.
+<br>
+During this step, data that will be passed to the Python code also gets generated.
+These data are packed together with the PySource into a [PyMetaModule](crate::rust_to_py::py_code_gen::PyMetaModule).
+
+### Step 3: Python Execution
+TODO
+
+### Step 4: Collecting Results / Reporting Exceptions
+TODO
+
+
 # Attributions
 
 This crate is inspired by the great [repetitive](https://github.com/Noam2Stein/repetitive) crate
