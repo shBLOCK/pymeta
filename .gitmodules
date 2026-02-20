@@ -1,0 +1,3 @@
+[submodule "crates/micropython-src/micropython"]
+	path = crates/micropython-src/micropython
+	url = https://github.com/micropython/micropython.git
