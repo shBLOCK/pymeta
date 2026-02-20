@@ -52,6 +52,8 @@ pub(crate) fn execute(exe: PyMetaExecutable) -> PyMetaExecutionResult {
         code.run(Some(&context), None)?;
 
         tokens.call_method0("__exit__").expect("Tokens.__exit__() failed");
+
+        // extract result
         let tokens: Bound<_pymeta::PyTokenStream> = tokens
             .call_method0("_to_tokenstream")
             .expect("Tokens._to_tokenstream() failed")
@@ -61,6 +63,7 @@ pub(crate) fn execute(exe: PyMetaExecutable) -> PyMetaExecutionResult {
         Ok(tokens.borrow_mut().0.take().unwrap())
     })
     .map_err(|err| {
+        // report exception
         Python::attach(|py| {
             let exception = err.into_value(py).into_bound(py);
 
@@ -173,7 +176,7 @@ mod _pymeta {
     #[pymethods]
     impl PySpan {
         fn __repr__(&self) -> String {
-            format!("Span()") // TODO
+            String::from("Span()") // TODO
         }
 
         #[staticmethod]

@@ -99,7 +99,7 @@ pub(crate) fn rust_c_string_repr_to_python_bytes_repr(repr: &str) -> String {
                     .get()
                     .encode_utf8(&mut [0; 4])
                     .as_bytes()
-                    .into_iter()
+                    .iter()
                     .for_each(|&byte| append_byte_escaped_for_python(&mut py_repr, byte)),
                 MixedUnit::HighByte(byte) => append_byte_escaped_for_python(&mut py_repr, byte.get()),
             });

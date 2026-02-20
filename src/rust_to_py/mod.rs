@@ -1,4 +1,4 @@
-pub(crate) mod code_regions;
+pub(crate) mod code_region;
 pub(crate) mod py_code_gen;
 pub(crate) mod py_source;
 mod utils;

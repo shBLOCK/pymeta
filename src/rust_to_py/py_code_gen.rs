@@ -1,7 +1,7 @@
 use super::py_source::builder::PySourceBuilder;
 use super::py_source::{PySegment, PySource};
 use crate::rust_to_py::CONCAT_MARKER;
-use crate::rust_to_py::code_regions::{
+use crate::rust_to_py::code_region::{
     CodeRegion, IdentWithPyExpr, PyExpr, PyStmt, PyStmtWithIndentBlock, RustCode, RustCodeWithBlock,
 };
 use crate::rust_to_py::utils::{DelimiterEx, PunctEx};
@@ -239,7 +239,7 @@ impl PyCodeGen {
             RustCode::Code(token) => match token {
                 Token::Ident(ident) => {
                     self.py.append(PySegment::new(
-                        format!(r#"Ident("{}", "#, ident.inner().to_string()),
+                        format!(r#"Ident("{}", "#, ident.inner()),
                         Some(ident.span()),
                     ));
                     self.append_span(ident.span());
@@ -379,8 +379,7 @@ impl PyCodeGen {
         }
     }
 
-    fn append_rust_code_region(&mut self, region: &Vec<RustCode>) {
-        let region = &region[..];
+    fn append_rust_code_region(&mut self, region: &[RustCode]) {
         if region.is_empty() {
             self.py.new_line(None);
             self.py.append(PySegment::new("pass", None));

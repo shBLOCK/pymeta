@@ -42,3 +42,7 @@ debug = false
 [profile.debugging]
 inherits = "dev"
 debug = true
+
+
+[lints.clippy]
+unwrap_or_default = "allow"

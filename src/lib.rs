@@ -6,7 +6,7 @@ extern crate proc_macro;
 use std::fmt::Write;
 
 use crate::rust_to_py::PY_MARKER;
-use crate::rust_to_py::code_regions::parser::CodeRegionParser;
+use crate::rust_to_py::code_region::parser::CodeRegionParser;
 use crate::rust_to_py::py_code_gen::{PyCodeGen, PyMetaExecutable};
 use either::Either;
 use proc_macro::{Diagnostic, Level as DiagnosticLevel};

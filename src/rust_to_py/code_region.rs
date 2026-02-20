@@ -171,7 +171,7 @@ pub(crate) mod parser {
                             tokens: py_tokens.into(),
                         },
                         group,
-                        block: CodeRegionParser::new().parse(group_tokens).into(),
+                        block: CodeRegionParser::new().parse(group_tokens),
                     }));
                 }
 
@@ -254,14 +254,13 @@ pub(crate) mod parser {
                                     group: Rc::clone(group),
                                     code: group_regions
                                         .into_iter()
-                                        .map(|region| {
+                                        .flat_map(|region| {
                                             if let CodeRegion::RustCode(code) = region {
                                                 code
                                             } else {
                                                 unreachable!()
                                             }
                                         })
-                                        .flatten()
                                         .collect(),
                                 };
                                 self.get_or_put_rust_code_region().push(group_code);
@@ -313,11 +312,8 @@ pub(crate) mod parser {
                     }
                 }
             }
-            self.regions = self
-                .regions
-                .into_iter()
-                .filter(|region| !matches!(region, CodeRegion::RustCode(code) if code.is_empty()))
-                .collect();
+            self.regions
+                .retain(|region| !matches!(region, CodeRegion::RustCode(code) if code.is_empty()));
 
             self.regions.into()
         }

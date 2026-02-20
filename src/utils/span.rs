@@ -1,6 +1,7 @@
 #[cfg(feature = "nightly_proc_macro_span")]
 use crate::utils::LineColumn;
 use proc_macro2::Span;
+#[cfg(feature = "nightly_proc_macro_span")]
 use std::cell::OnceCell;
 use std::fmt::{Debug, Formatter};
 
