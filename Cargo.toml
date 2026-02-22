@@ -12,6 +12,11 @@ categories = [
     "development-tools::build-utils"
 ]
 keywords = ["proc-macro", "python", "meta-programming", "codegen"]
+include = [
+    "/src",
+    "/pylib",
+    "/README.md"
+]
 
 [lib]
 proc-macro = true

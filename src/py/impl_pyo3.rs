@@ -16,7 +16,16 @@ pub(crate) fn execute(exe: PyMetaExecutable) -> PyMetaExecutionResult {
         let sys = py.import("sys")?;
         let sys_modules: Bound<PyDict> = sys.getattr("modules")?.cast_into_exact()?;
         sys_modules.set_item("_pymeta", pyo3::wrap_pymodule!(_pymeta)(py))?;
-        PyModule::from_code(py, c_str!(include_str!("pymeta.py")), c"pymeta.py", c"pymeta")?;
+        PyModule::from_code(
+            py,
+            c_str!(include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/pylib/src/",
+                "pymeta.py"
+            ))),
+            c"pymeta.py",
+            c"pymeta",
+        )?;
         Ok(())
     })
     .unwrap_or_else(|e| panic!("Failed to initialize Python libs: {e:?}"));
