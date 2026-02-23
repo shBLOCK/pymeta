@@ -1,4 +1,4 @@
-name: mdBook
+name: Build & Deploy mdBook
 on: workflow_dispatch
 
 jobs:
