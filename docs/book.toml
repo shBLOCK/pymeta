@@ -1,0 +1,7 @@
+[book]
+title = "PyMeta"
+authors = ["shBLOCK"]
+language = "en"
+
+[rust]
+edition = "2024"
