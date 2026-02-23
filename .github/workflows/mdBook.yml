@@ -25,5 +25,5 @@ jobs:
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v4
         with:
-          path: "./book"
+          path: "docs/book/"
       - uses: actions/deploy-pages@v4
