@@ -21,10 +21,22 @@ impl SpanOptionEx for Option<Span> {
 }
 
 pub(crate) trait SpanEx {
+    fn start_span(&self) -> Span;
+    fn end_span(&self) -> Span;
+    
     fn join_or_fallback(self, other: Option<Span>) -> Span;
 }
 
 impl SpanEx for Span {
+    fn start_span(&self) -> Span {
+        self.unwrap().start().into()
+    }
+
+    fn end_span(&self) -> Span {
+        self.unwrap().end().into()
+    }
+
+
     fn join_or_fallback(self, other: Option<Span>) -> Span {
         Some(self).join_or_fallback(other)
     }

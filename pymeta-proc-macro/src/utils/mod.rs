@@ -1,6 +1,7 @@
 pub(crate) mod escape;
 pub(crate) mod rust_token;
 pub(crate) mod span;
+pub(crate) mod parse_buffer;
 
 macro_rules! match_unwrap {
     ($var:ident in $pattern:pat = $expr:expr) => {{
@@ -36,5 +37,31 @@ impl From<LineColumn> for proc_macro2::LineColumn {
             line: value.line as usize,
             column: value.column as usize,
         }
+    }
+}
+
+
+pub(crate) trait ResultOrOption<T, E> {
+    fn is_good(&self) -> bool;
+    fn is_bad(&self) -> bool;
+}
+
+impl<T, E> ResultOrOption<T, E> for Result<T, E> {
+    fn is_good(&self) -> bool {
+        self.is_ok()
+    }
+
+    fn is_bad(&self) -> bool {
+        self.is_err()
+    }
+}
+
+impl<T> ResultOrOption<T, ()> for Option<T> {
+    fn is_good(&self) -> bool {
+        self.is_some()
+    }
+    
+    fn is_bad(&self) -> bool {
+        self.is_none()
     }
 }

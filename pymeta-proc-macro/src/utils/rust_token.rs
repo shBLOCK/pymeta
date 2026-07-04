@@ -1,10 +1,9 @@
-use crate::utils::span::CSpan;
+use crate::utils::parse_buffer::ParseBuffer;
+use crate::utils::span::{CSpan, SpanEx};
 use proc_macro2::{Delimiter, Span, TokenTree};
 use std::cell::OnceCell;
 use std::fmt::{Debug, Formatter};
-use std::ops::RangeBounds;
 use std::rc::Rc;
-use std::slice::SliceIndex;
 
 #[derive(Clone)]
 pub(crate) struct Ident {
@@ -31,6 +30,12 @@ pub(crate) struct Group {
     tokens: Rc<[Token]>,
 }
 
+impl Ident {
+    pub fn eq_ident<'a>(&self, ident: impl Into<&'a str>) -> bool {
+        self.ident.to_string() == ident.into()
+    }
+}
+
 impl Punct {
     pub fn eq_punct(&self, ch: char) -> bool {
         self.punct.as_char() == ch
@@ -39,7 +44,7 @@ impl Punct {
 
 impl Group {
     pub fn tokens(&self) -> TokenBuffer {
-        TokenBuffer::from(&self.tokens)
+        TokenBuffer::from(Rc::clone(&self.tokens))
     }
 
     pub fn delimiter(&self) -> Delimiter {
@@ -50,11 +55,11 @@ impl Group {
 impl From<proc_macro2::Group> for Group {
     fn from(value: proc_macro2::Group) -> Self {
         // TODO: check if this works properly when group delimiter is Delimiter::None
-        let tokens = Token::tokens_from(value.stream());
+        let tokens = value.stream().into_iter().map(Token::from).collect();
         Self {
             group: value,
             span: OnceCell::new(),
-            tokens: Rc::from(tokens),
+            tokens,
         }
     }
 }
@@ -158,6 +163,13 @@ impl Token {
     token_get_token_struct_fn!(Literal, literal);
     token_get_token_struct_fn!(Group, group);
 
+    pub fn eq_ident<'a>(&self, ident: impl Into<&'a str>) -> bool {
+        match self {
+            Self::Ident(it) => it.eq_ident(ident),
+            _ => false,
+        }
+    }
+
     pub fn eq_punct(&self, ch: char) -> bool {
         match self {
             Self::Punct(punct) => punct.eq_punct(ch),
@@ -184,9 +196,14 @@ impl From<TokenTree> for Token {
     }
 }
 
-impl Token {
-    fn tokens_from(iter: impl IntoIterator<Item = TokenTree>) -> Vec<Self> {
-        iter.into_iter().map(Token::from).collect()
+impl From<&Token> for TokenTree {
+    fn from(value: &Token) -> Self {
+        match value {
+            Token::Ident(ident) => ident.inner().clone().into(),
+            Token::Punct(punct) => punct.inner().clone().into(),
+            Token::Literal(literal) => literal.inner().clone().into(),
+            Token::Group(group) => group.inner().clone().into(),
+        }
     }
 }
 
@@ -201,80 +218,21 @@ impl Debug for Token {
     }
 }
 
-/// A version of [proc_macro2::TokenStream] that's more useful for parsing.
-#[derive(Clone, Debug)]
-pub(crate) struct TokenBuffer {
-    tokens: Rc<[Token]>,
-    pos: usize,
-}
+pub(crate) type TokenBuffer = ParseBuffer<Token>;
 
 impl TokenBuffer {
-    pub fn read_one(&mut self) -> Option<&Token> {
-        self.current()?;
-        self.pos += 1;
-        Some(self.peek(-1).unwrap())
-    }
-
-    pub fn seek(&mut self, offset: isize) -> Option<&mut Self> {
-        let target = self.pos as isize + offset;
-        if !(0..=self.tokens.len() as isize).contains(&target) {
-            return None;
+    pub fn get_current_span_for_diagnostics(&self) -> Span {
+        if let Some(token) = self.current() {
+            return token.span().inner();
         }
-        self.pos = target as usize;
-        Some(self)
-    }
-
-    pub fn seeked(&self, offset: isize) -> Option<Self> {
-        let mut tokens = self.clone();
-        tokens.seek(offset)?;
-        Some(tokens)
-    }
-
-    pub fn current(&self) -> Option<&Token> {
-        self.tokens.get(self.pos)
-    }
-
-    pub fn slice(&self, range: impl RangeBounds<usize> + SliceIndex<[Token], Output = [Token]>) -> &[Token] {
-        &self.tokens[range]
-    }
-
-    pub fn peek(&self, offset: isize) -> Option<&Token> {
-        self.tokens.get(self.pos.checked_add_signed(offset)?)
-    }
-
-    #[allow(unused)]
-    pub fn pos(&self) -> usize {
-        self.pos
-    }
-
-    #[allow(unused)]
-    pub fn set_pos(&mut self, pos: usize) -> Result<(), ()> {
-        if pos > self.tokens.len() {
-            return Err(());
-        }
-        self.pos = pos;
-        Ok(())
-    }
-
-    pub fn exausted(&self) -> bool {
-        self.pos >= self.tokens.len()
+        self.peek(-1)
+            .map(|token| token.span().inner().end_span())
+            .unwrap_or_else(Span::call_site)
     }
 }
 
 impl FromIterator<TokenTree> for TokenBuffer {
     fn from_iter<T: IntoIterator<Item = TokenTree>>(iter: T) -> Self {
-        Self {
-            tokens: Rc::from(Token::tokens_from(iter)),
-            pos: 0,
-        }
-    }
-}
-
-impl From<&Rc<[Token]>> for TokenBuffer {
-    fn from(value: &Rc<[Token]>) -> Self {
-        Self {
-            tokens: Rc::clone(value),
-            pos: 0,
-        }
+        Self::from(iter.into_iter().map(Token::from).collect::<Rc<[Token]>>())
     }
 }

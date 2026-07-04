@@ -18,24 +18,17 @@ include = [
     "/README.md"
 ]
 
-[lib]
-proc-macro = true
-
+[workspace]
+members = [
+    "pymeta-proc-macro",
+    "pymeta-micropython-src"
+]
+resolver = "3"
 
 [dependencies]
-proc-macro2 = { version = "1.0.106" }
-proc-macro-error2 = { version = "2.0.1", default-features = false }
+pymeta-proc-macro = { path = "pymeta-proc-macro" }
 
-#rustpython-vm = { git = "https://github.com/RustPython/RustPython.git", tag = "2025-11-10-main-55" }
-pyo3 = { version = "0.28.1" }
-
-rustc-literal-escaper = "0.0.7"
-either = "1.15.0"
-unicode-ident = "1.0.24"
-
-
-[features]
-nightly_proc_macro_span = ["proc-macro2/span-locations"]
+#[features]
 
 
 [profile.dev]

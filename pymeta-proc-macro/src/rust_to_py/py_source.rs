@@ -6,13 +6,13 @@ use std::iter::repeat_n;
 use std::rc::Rc;
 
 #[derive(Debug)]
-pub(crate) struct PySegment {
+pub(crate) struct PySrcSegment {
     pub code: Cow<'static, str>,
     pub src_span: Option<Rc<CSpan>>,
 }
 
-impl PySegment {
-    pub fn new(code: impl Into<Cow<'static, str>>, src_span: Option<Rc<CSpan>>) -> PySegment {
+impl PySrcSegment {
+    pub fn new(code: impl Into<Cow<'static, str>>, src_span: Option<Rc<CSpan>>) -> PySrcSegment {
         Self {
             code: code.into(),
             src_span,
@@ -23,7 +23,7 @@ impl PySegment {
         string.push_str(&self.code);
     }
 
-    pub fn join_src_spans<'a>(segments: impl Iterator<Item = &'a PySegment>) -> Option<Span> {
+    pub fn join_src_spans<'a>(segments: impl Iterator<Item = &'a PySrcSegment>) -> Option<Span> {
         segments
             .map(|seg| seg.src_span.as_ref().map(|s| s.inner()))
             .reduce(|a, b| match (a, b) {
@@ -36,7 +36,7 @@ impl PySegment {
 
 #[derive(Debug)]
 pub(crate) struct PyLine {
-    pub segments: Box<[Rc<PySegment>]>,
+    pub segments: Box<[Rc<PySrcSegment>]>,
     pub indent: usize,
 }
 
@@ -80,7 +80,7 @@ impl PySource {
 }
 
 pub(crate) mod builder {
-    use super::{PySegment, PySource};
+    use super::{PySrcSegment, PySource};
     use either::Either;
     use std::cell::{RefCell, RefMut};
     use std::mem;
@@ -88,7 +88,7 @@ pub(crate) mod builder {
 
     #[derive(Debug)]
     struct PyLine {
-        segments: Vec<Rc<PySegment>>,
+        segments: Vec<Rc<PySrcSegment>>,
         indent: Option<usize>,
     }
 
@@ -100,7 +100,7 @@ pub(crate) mod builder {
             }
         }
 
-        fn append(&mut self, segment: PySegment) {
+        fn append(&mut self, segment: PySrcSegment) {
             self.segments.push(Rc::new(segment));
         }
     }
@@ -119,7 +119,7 @@ pub(crate) mod builder {
             }
         }
 
-        fn append(&mut self, segment: PySegment) {
+        fn append(&mut self, segment: PySrcSegment) {
             self.content
                 .last_mut()
                 .expect("Appending to an empty IndentBlock")
@@ -128,7 +128,7 @@ pub(crate) mod builder {
                 .append(segment);
         }
 
-        fn pop_last_segment_if(&mut self, predict: fn(&PySegment) -> bool) {
+        fn pop_last_segment_if(&mut self, predict: fn(&PySrcSegment) -> bool) {
             if let Some(Either::Left(line)) = self.content.last_mut() {
                 line.segments.pop_if(|seg| predict(seg));
             }
@@ -160,11 +160,11 @@ pub(crate) mod builder {
             self.indent_block_stack.last_mut().unwrap().borrow_mut()
         }
 
-        pub fn append(&mut self, segment: PySegment) {
+        pub fn append(&mut self, segment: PySrcSegment) {
             self.top().append(segment);
         }
 
-        pub fn pop_last_segment_if(&mut self, predict: fn(&PySegment) -> bool) {
+        pub fn pop_last_segment_if(&mut self, predict: fn(&PySrcSegment) -> bool) {
             self.top().pop_last_segment_if(predict);
         }
 

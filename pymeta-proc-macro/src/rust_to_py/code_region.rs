@@ -1,18 +1,30 @@
+use crate::rust_to_py::meta::expr::MetaExpr;
+use crate::rust_to_py::meta::stmt::MetaStmt;
 use crate::utils::rust_token::{Group, Ident, Punct, Token};
 use either::Either;
 use std::rc::Rc;
 
 #[derive(Debug)]
+pub(crate) enum PySegment {
+    Token(Token),
+    Group {
+        group: Rc<Group>,
+        segments: Rc<[PySegment]>,
+    },
+    MetaExpr(MetaExpr),
+}
+
+#[derive(Debug)]
 pub(crate) struct PyStmt {
     pub _marker: Rc<Punct>,
-    pub tokens: Rc<[Token]>,
+    pub segments: Rc<[PySegment]>,
 }
 
 #[derive(Debug)]
 pub(crate) struct PyExpr {
     pub start_marker: Rc<Punct>,
     pub end_marker: Rc<Punct>,
-    pub tokens: Rc<[Token]>,
+    pub segments: Rc<[PySegment]>,
 }
 
 pub(crate) type IdentWithPyExpr = Vec<Either<Rc<Ident>, PyExpr>>;
@@ -93,6 +105,8 @@ pub(crate) enum CodeRegion {
     /// In the generated Python code, the `{}` of the indent block is stripped out,
     /// but explicit indentation is applied to the code within the block.
     PyStmtWithIndentBlock(PyStmtWithIndentBlock),
+
+    MetaStmt(MetaStmt),
 }
 
 macro_rules! impl_code_region_from_inner {
@@ -111,81 +125,118 @@ impl_code_region_from_inner!(PyStmt, PyStmt);
 impl_code_region_from_inner!(PyStmtWithIndentBlock, PyStmtWithIndentBlock);
 
 pub(crate) mod parser {
-    use super::{CodeRegion, PyExpr, PyStmt, PyStmtWithIndentBlock, RustCode, RustCodeWithBlock};
+    use super::{CodeRegion, PyExpr, PySegment, PyStmt, PyStmtWithIndentBlock, RustCode, RustCodeWithBlock};
     use crate::rust_to_py::CONCAT_MARKER;
-    use crate::rust_to_py::utils::TokenBufferEx;
+    use crate::rust_to_py::meta::expr::MetaExpr;
+    use crate::rust_to_py::meta::stmt::{ImportMetaStmt, MetaStmt, MetaStmtBody};
+    use crate::rust_to_py::utils::{SimpleRustPath, TokenBufferEx, TokenOptionEx};
     use crate::utils::match_unwrap;
     use crate::utils::rust_token::{Token, TokenBuffer};
     use either::Either;
     use proc_macro_error2::abort;
     use std::rc::Rc;
 
+    pub(crate) struct CodeRegionParserCtx {
+        pub import_paths: Vec<Rc<SimpleRustPath>>,
+    }
+
+    impl CodeRegionParserCtx {
+        pub fn new() -> Self {
+            Self { import_paths: Vec::new() }
+        }
+    }
+
     /// [Self::parse] parses a [TokenBuffer] into [CodeRegion]s
-    pub(crate) struct CodeRegionParser {
+    pub(crate) struct CodeRegionParser<'a> {
         regions: Vec<CodeRegion>,
+        ctx: &'a mut CodeRegionParserCtx,
     }
 
     enum ParsePyResult {
         Expr(PyExpr),
         Stmt(PyStmt),
         StmtWithIndentBlock(PyStmtWithIndentBlock),
+        MetaStmt(MetaStmt),
     }
 
-    impl CodeRegionParser {
-        pub(crate) fn new() -> Self {
-            Self { regions: Vec::new() }
+    impl CodeRegionParser<'_> {
+        pub(crate) fn new(ctx: &mut CodeRegionParserCtx) -> CodeRegionParser {
+            CodeRegionParser { regions: Vec::new(), ctx }
+        }
+        
+        fn parse_py_segment(tokens: &mut TokenBuffer) -> PySegment {
+            if tokens.is_py_marker_escape() {
+                PySegment::Token(Token::Punct(tokens.read_unescaped_py_marker_escape()))
+            } else if let Some(meta_expr) = MetaExpr::parse(tokens) {
+                PySegment::MetaExpr(meta_expr)
+            } else {
+                match tokens.read_one() {
+                    Some(Token::Group(group)) => {
+                        let mut group_tokens = group.tokens();
+                        let mut segments = Vec::new();
+                        while !group_tokens.exhausted() {
+                            segments.push(Self::parse_py_segment(&mut group_tokens));
+                        }
+                        PySegment::Group {
+                            group: group.clone(),
+                            segments: Rc::from(segments),
+                        }
+                    }
+                    Some(token) => PySegment::Token(token.clone()),
+                    None => abort!(tokens.get_current_span_for_diagnostics(), "Incomplete Python segment."),
+                }
+            }
         }
 
-        fn parse_py(tokens: &mut TokenBuffer) -> Option<ParsePyResult> {
+        fn parse_py(&mut self, tokens: &mut TokenBuffer) -> Option<ParsePyResult> {
             if !tokens.is_py_marker_start() {
                 return None;
             }
-            let start = tokens.read_one().unwrap().punct().unwrap();
+            let start = tokens.read_one().punct().unwrap();
 
-            let mut py_tokens = Vec::new();
+            if let Some(meta_stmt) = MetaStmt::parse(tokens) {
+                if let MetaStmtBody::Import(ImportMetaStmt { path, .. }) = &meta_stmt.body {
+                    if !self.ctx.import_paths.contains(path) {
+                        self.ctx.import_paths.push(path.clone());
+                    }
+                }
+                return Some(ParsePyResult::MetaStmt(meta_stmt));
+            }
+
+            let mut py_segments = Vec::new();
 
             loop {
-                if tokens.peek(-1).unwrap().eq_punct(';') {
+                if tokens.peek(-1).eq_punct(';') {
                     return Some(ParsePyResult::Stmt(PyStmt {
                         _marker: start,
-                        tokens: py_tokens.into(),
+                        segments: py_segments.into(),
                     }));
                 }
 
                 if tokens.is_py_marker_end() {
-                    let end = tokens.read_one().unwrap().punct().unwrap();
+                    let end = tokens.read_one().punct().unwrap();
                     return Some(ParsePyResult::Expr(PyExpr {
                         start_marker: start,
                         end_marker: end,
-                        tokens: py_tokens.into(),
+                        segments: py_segments.into(),
                     }));
                 }
 
                 if tokens.is_indent_block() {
-                    py_tokens.push(tokens.read_one().unwrap().clone());
-                    let group = tokens.read_one().unwrap().group().unwrap();
+                    py_segments.push(PySegment::Token(tokens.read_one().unwrap().clone()));
+                    let group = tokens.read_one().group().unwrap();
                     let group_tokens = group.tokens();
                     return Some(ParsePyResult::StmtWithIndentBlock(PyStmtWithIndentBlock {
                         stmt: PyStmt {
                             _marker: start,
-                            tokens: py_tokens.into(),
+                            segments: py_segments.into(),
                         },
                         group,
-                        block: CodeRegionParser::new().parse(group_tokens),
+                        block: CodeRegionParser::new(self.ctx).parse(group_tokens),
                     }));
                 }
 
-                if tokens.is_py_marker_escape() {
-                    py_tokens.push(Token::Punct(tokens.read_unescaped_py_marker_escape()));
-                } else {
-                    let Some(token) = tokens.read_one() else {
-                        abort!(
-                            tokens.peek(-1).unwrap().span().inner().unwrap().end(),
-                            "Incomplete Python segment."
-                        );
-                    };
-                    py_tokens.push(token.clone())
-                }
+                py_segments.push(Self::parse_py_segment(tokens));
             }
         }
 
@@ -198,13 +249,14 @@ pub(crate) mod parser {
         }
 
         pub(crate) fn parse(mut self, mut tokens: TokenBuffer) -> Box<[CodeRegion]> {
-            while !tokens.exausted() {
-                if let Some(py) = Self::parse_py(&mut tokens) {
+            while !tokens.exhausted() {
+                if let Some(py) = self.parse_py(&mut tokens) {
                     match (self.regions.last_mut(), py) {
                         (_, ParsePyResult::Stmt(stmt)) => self.regions.push(CodeRegion::PyStmt(stmt)),
                         (_, ParsePyResult::StmtWithIndentBlock(stmt)) => {
                             self.regions.push(CodeRegion::PyStmtWithIndentBlock(stmt))
                         }
+                        (_, ParsePyResult::MetaStmt(meta_stmt)) => self.regions.push(CodeRegion::MetaStmt(meta_stmt)),
                         (Some(CodeRegion::RustCode(code)), ParsePyResult::Expr(expr)) => {
                             match &mut code[..] {
                                 [
@@ -244,7 +296,7 @@ pub(crate) mod parser {
                     };
                     match token {
                         Token::Group(group) => {
-                            let group_regions = Self::new().parse(group.tokens());
+                            let group_regions = Self::new(self.ctx).parse(group.tokens());
                             if group_regions
                                 .iter()
                                 .all(|region| matches!(region, CodeRegion::RustCode(_)))
@@ -317,5 +369,9 @@ pub(crate) mod parser {
 
             self.regions.into()
         }
+
+        // pub(crate) fn parse(tokens: TokenBuffer, ctx: &'_ mut CodeRegionParserCtx) -> Box<[CodeRegion]> {
+        //     Self::new(ctx)._parse(tokens)
+        // }
     }
 }
