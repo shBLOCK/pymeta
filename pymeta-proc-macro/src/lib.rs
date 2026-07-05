@@ -16,7 +16,7 @@ mod utils;
 /// This is the final macro call that will actually execute the Python code.
 /// It's expected that all `import!`d modules have been included when calling this macro.
 #[proc_macro]
-#[proc_macro_error2::proc_macro_error]
+#[proc_macro_error3::proc_macro_error]
 pub fn _pymeta_main(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     // let input = TokenBuffer::from_iter(TokenStream::from(input));
     // while !input.exhausted() {
@@ -29,7 +29,7 @@ pub fn _pymeta_main(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
 /// TODO: detailed documentation will be available here,
 /// for now you can check out the examples in the crate's top-level documentation
 #[proc_macro]
-#[proc_macro_error2::proc_macro_error]
+#[proc_macro_error3::proc_macro_error]
 pub fn pymeta(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let input = TokenBuffer::from_iter(TokenStream::from(input));
     let mut code_region_parser_ctx = CodeRegionParserCtx::new();

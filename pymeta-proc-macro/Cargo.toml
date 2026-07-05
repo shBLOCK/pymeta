@@ -9,14 +9,14 @@ proc-macro = true
 
 [dependencies]
 proc-macro2 = { version = "1.0.106" }
-proc-macro-error2 = { version = "2.0.1", default-features = false }
+proc-macro-error3 = { version = "3.0.2", default-features = false }
 quote = "1.0.46"
 
 #rustpython-vm = { git = "https://github.com/RustPython/RustPython.git", tag = "2025-11-10-main-55" }
-pyo3 = { version = "0.28.1" }
+pyo3 = { version = "0.29.0" }
 
-rustc-literal-escaper = "0.0.7"
-either = "1.15.0"
+rustc-literal-escaper = "0.0.8"
+either = "1.16.0"
 unicode-ident = "1.0.24"
 
 

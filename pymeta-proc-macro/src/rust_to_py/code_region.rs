@@ -133,7 +133,7 @@ pub(crate) mod parser {
     use crate::utils::match_unwrap;
     use crate::utils::rust_token::{Token, TokenBuffer};
     use either::Either;
-    use proc_macro_error2::abort;
+    use proc_macro_error3::abort;
     use std::rc::Rc;
 
     pub(crate) struct CodeRegionParserCtx {
@@ -160,7 +160,7 @@ pub(crate) mod parser {
     }
 
     impl CodeRegionParser<'_> {
-        pub(crate) fn new(ctx: &mut CodeRegionParserCtx) -> CodeRegionParser {
+        pub(crate) fn new(ctx: &mut CodeRegionParserCtx) -> CodeRegionParser<'_> {
             CodeRegionParser { regions: Vec::new(), ctx }
         }
         

@@ -4,11 +4,11 @@ use std::rc::Rc;
 
 pub(crate) mod stmt {
     use super::*;
+    use crate::rust_to_py::py_code_gen::PyCodeGen;
     use crate::rust_to_py::utils::TokenOptionEx;
     use crate::utils::rust_token::{Token, TokenBuffer};
     use proc_macro2::Delimiter;
-    use proc_macro_error2::abort;
-    use crate::rust_to_py::py_code_gen::PyCodeGen;
+    use proc_macro_error3::abort;
 
     #[derive(Debug)]
     pub struct MetaStmt {
