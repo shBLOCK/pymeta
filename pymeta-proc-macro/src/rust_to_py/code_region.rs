@@ -129,12 +129,13 @@ pub(crate) mod parser {
     use crate::rust_to_py::CONCAT_MARKER;
     use crate::rust_to_py::meta::expr::MetaExpr;
     use crate::rust_to_py::meta::stmt::{ImportMetaStmt, MetaStmt, MetaStmtBody};
-    use crate::rust_to_py::utils::{SimpleRustPath, TokenBufferEx, TokenOptionEx};
+    use crate::rust_to_py::utils::TokenBufferEx;
     use crate::utils::match_unwrap;
-    use crate::utils::rust_token::{Token, TokenBuffer};
+    use crate::utils::rust_token::{Token, TokenBuffer, TokenOptionEx};
     use either::Either;
     use proc_macro_error3::abort;
     use std::rc::Rc;
+    use crate::utils::parsing::SimpleRustPath;
 
     pub(crate) struct CodeRegionParserCtx {
         pub import_paths: Vec<Rc<SimpleRustPath>>,

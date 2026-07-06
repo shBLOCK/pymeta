@@ -8,7 +8,7 @@ include = ["/pylib"]
 proc-macro = true
 
 [dependencies]
-proc-macro2 = { version = "1.0.106" }
+proc-macro2 = { version = "1.0.106", features = ["span-locations"] }
 proc-macro-error3 = { version = "3.0.2", default-features = false }
 quote = "1.0.46"
 

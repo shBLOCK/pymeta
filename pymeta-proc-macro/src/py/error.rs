@@ -160,13 +160,12 @@ impl PythonError {
 
                     let filename = frame.location.file.as_ref().map_left(|m| &m.filename).into_inner();
                     let mut text = format!("|  File \"{filename}\", line {}", frame.location.start_line);
-                    #[cfg(feature = "nightly_proc_macro_span")]
                     if let Some(src_span) = frame.location.src_span() {
                         write!(text, " (Rust line {})", src_span.start().line).unwrap();
                     }
                     write!(text, ", in {}", frame.frame_name).unwrap();
-
-                    #[cfg(feature = "nightly_proc_macro_span")]
+                    
+                    #[cfg(feature = "nightly_proc_macro_span")] // TODO FIXME
                     if let Some(src_span) = frame.location.src_span() {
                         diagnostic = diagnostic.span_note(src_span.unwrap(), text);
                     } else {
@@ -200,7 +199,6 @@ impl PythonError {
                     file = location.file.as_ref().map_left(|m| &m.filename),
                     line = location.start_line,
                 );
-                #[cfg(feature = "nightly_proc_macro_span")]
                 if let Some(src_span) = location.src_span() {
                     write!(location_msg, " (Rust line {})", src_span.start().line).unwrap();
                 }

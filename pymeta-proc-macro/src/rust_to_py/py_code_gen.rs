@@ -3,11 +3,10 @@ use super::py_source::{PySource, PySrcSegment};
 use crate::rust_to_py::code_region::{
     CodeRegion, IdentWithPyExpr, PyExpr, PySegment, PyStmt, PyStmtWithIndentBlock, RustCode, RustCodeWithBlock,
 };
-use crate::rust_to_py::utils::{DelimiterEx, PunctEx};
 use crate::rust_to_py::CONCAT_MARKER;
 use crate::utils::escape::*;
 use crate::utils::parse_buffer::ParseBuffer;
-use crate::utils::rust_token::Token;
+use crate::utils::rust_token::{DelimiterEx, PunctEx, Token};
 use crate::utils::span::{CSpan, SpanEx};
 use either::Either;
 use proc_macro::{Diagnostic, Level as DiagnosticLevel};

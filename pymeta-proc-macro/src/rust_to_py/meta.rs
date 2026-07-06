@@ -1,11 +1,11 @@
-use crate::rust_to_py::utils::SimpleRustPath;
+use crate::utils::parsing::SimpleRustPath;
 use crate::utils::rust_token::{Ident, Punct};
 use std::rc::Rc;
 
 pub(crate) mod stmt {
     use super::*;
     use crate::rust_to_py::py_code_gen::PyCodeGen;
-    use crate::rust_to_py::utils::TokenOptionEx;
+    use crate::utils::rust_token::TokenOptionEx;
     use crate::utils::rust_token::{Token, TokenBuffer};
     use proc_macro2::Delimiter;
     use proc_macro_error3::abort;
@@ -138,7 +138,7 @@ pub(crate) mod stmt {
 }
 
 pub(crate) mod expr {
-    use crate::rust_to_py::utils::TokenOptionEx;
+    use crate::utils::rust_token::TokenOptionEx;
     use crate::utils::rust_token::{Group, Ident, Punct, TokenBuffer};
     use proc_macro2::Delimiter;
     use std::rc::Rc;

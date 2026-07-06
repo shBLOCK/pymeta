@@ -1,6 +1,7 @@
 use crate::utils::parse_buffer::ParseBuffer;
 use crate::utils::span::{CSpan, SpanEx};
-use proc_macro2::{Delimiter, Span, TokenTree};
+use proc_macro2::{Delimiter, Span, TokenStream, TokenTree};
+use quote::TokenStreamExt;
 use std::cell::OnceCell;
 use std::fmt::{Debug, Formatter};
 use std::rc::Rc;
@@ -93,6 +94,12 @@ macro_rules! impl_token_struct_common {
             pub fn set_span(&mut self, span: Span) {
                 self.span.take();
                 self.$inner_name.set_span(span);
+            }
+        }
+
+        impl quote::ToTokens for $struct_name {
+            fn to_tokens(&self, tokens: &mut proc_macro2::TokenStream) {
+                tokens.append(self.$inner_name.clone());
             }
         }
     };
@@ -234,5 +241,157 @@ impl TokenBuffer {
 impl FromIterator<TokenTree> for TokenBuffer {
     fn from_iter<T: IntoIterator<Item = TokenTree>>(iter: T) -> Self {
         Self::from(iter.into_iter().map(Token::from).collect::<Rc<[Token]>>())
+    }
+}
+
+impl quote::ToTokens for TokenBuffer {
+    fn to_tokens(&self, tokens: &mut TokenStream) {
+        tokens.extend(self.slice(..).iter().map(TokenTree::from))
+    }
+}
+
+pub(crate) trait TokenOptionEx {
+    fn ident(&self) -> Option<Rc<Ident>>;
+    fn punct(&self) -> Option<Rc<Punct>>;
+    fn literal(&self) -> Option<Rc<Literal>>;
+    fn group(&self) -> Option<Rc<Group>>;
+
+    fn eq_punct(&self, c: char) -> bool;
+    fn eq_group(&self, delimiter: Delimiter) -> bool;
+
+    fn expect_punct(&self, c: char) -> Option<Rc<Punct>>;
+    fn expect_ident_by(&self, f: impl FnOnce(&str) -> bool) -> Option<Rc<Ident>>;
+    fn expect_ident<'a>(&self, ident: impl Into<&'a str>) -> Option<Rc<Ident>>;
+    fn expect_group_by(&self, f: impl FnOnce(Delimiter) -> bool) -> Option<Rc<Group>>;
+    fn expect_group(&self, delimiter: Delimiter) -> Option<Rc<Group>>;
+}
+
+impl TokenOptionEx for Option<&Token> {
+    fn ident(&self) -> Option<Rc<Ident>> {
+        self.and_then(|it| it.ident())
+    }
+
+    fn punct(&self) -> Option<Rc<Punct>> {
+        self.and_then(|it| it.punct())
+    }
+
+    fn literal(&self) -> Option<Rc<Literal>> {
+        self.and_then(|it| it.literal())
+    }
+
+    fn group(&self) -> Option<Rc<Group>> {
+        self.and_then(|it| it.group())
+    }
+
+    fn eq_punct(&self, c: char) -> bool {
+        match self {
+            Some(t) => t.eq_punct(c),
+            None => false,
+        }
+    }
+
+    fn eq_group(&self, delimiter: Delimiter) -> bool {
+        match self {
+            Some(t) => t.eq_group(delimiter),
+            None => false,
+        }
+    }
+
+    fn expect_punct(&self, c: char) -> Option<Rc<Punct>> {
+        match self {
+            Some(Token::Punct(punct)) if punct.eq_punct(c) => Some(punct.clone()),
+            _ => None,
+        }
+    }
+
+    fn expect_ident_by(&self, f: impl FnOnce(&str) -> bool) -> Option<Rc<Ident>> {
+        match self {
+            Some(Token::Ident(it)) if f(it.inner().to_string().as_str()) => Some(it.clone()),
+            _ => None,
+        }
+    }
+
+    fn expect_ident<'a>(&self, ident: impl Into<&'a str>) -> Option<Rc<Ident>> {
+        self.expect_ident_by(|s| s == ident.into())
+    }
+
+    fn expect_group_by(&self, f: impl FnOnce(Delimiter) -> bool) -> Option<Rc<Group>> {
+        match self {
+            Some(Token::Group(it)) if f(it.delimiter()) => Some(it.clone()),
+            _ => None,
+        }
+    }
+
+    fn expect_group(&self, delimiter: Delimiter) -> Option<Rc<Group>> {
+        self.expect_group_by(|it| it == delimiter)
+    }
+}
+
+pub(crate) trait PunctEx {
+    fn as_str(&self) -> &'static str;
+}
+
+impl PunctEx for Punct {
+    fn as_str(&self) -> &'static str {
+        match self.inner().as_char() {
+            '!' => "!",
+            '#' => "#",
+            '$' => "$",
+            '%' => "%",
+            '&' => "&",
+            '\'' => "'",
+            '*' => "*",
+            '+' => "+",
+            ',' => ",",
+            '-' => "-",
+            '.' => ".",
+            '/' => "/",
+            ':' => ":",
+            ';' => ";",
+            '<' => "<",
+            '=' => "=",
+            '>' => ">",
+            '?' => "?",
+            '@' => "@",
+            '^' => "^",
+            '|' => "|",
+            '~' => "~",
+            _ => unreachable!(),
+        }
+    }
+}
+
+pub(crate) trait DelimiterEx {
+    fn left_str(self) -> Option<&'static str>;
+    fn right_str(self) -> Option<&'static str>;
+    fn left_right_str(self) -> Option<&'static str>;
+}
+
+impl DelimiterEx for Delimiter {
+    fn left_str(self) -> Option<&'static str> {
+        match self {
+            Delimiter::Parenthesis => Some("("),
+            Delimiter::Brace => Some("{"),
+            Delimiter::Bracket => Some("["),
+            Delimiter::None => None,
+        }
+    }
+
+    fn right_str(self) -> Option<&'static str> {
+        match self {
+            Delimiter::Parenthesis => Some(")"),
+            Delimiter::Brace => Some("}"),
+            Delimiter::Bracket => Some("]"),
+            Delimiter::None => None,
+        }
+    }
+
+    fn left_right_str(self) -> Option<&'static str> {
+        match self {
+            Delimiter::Parenthesis => Some("()"),
+            Delimiter::Brace => Some("{}"),
+            Delimiter::Bracket => Some("[]"),
+            Delimiter::None => None,
+        }
     }
 }
