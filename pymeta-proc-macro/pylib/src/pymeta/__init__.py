@@ -4,8 +4,8 @@ from string.templatelib import Template
 from typing import SupportsInt, SupportsFloat, final, Collection, Final, SupportsBytes, MutableSequence, overload, Self, \
     Any, Iterable
 
-import _pymeta
-from _pymeta import Span
+from . import _pymeta
+from ._pymeta import Span
 
 
 __all__ = (

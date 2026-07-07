@@ -9,8 +9,8 @@ use crate::utils::LiteralRawStringExt;
 use crate::utils::parsing::SimpleRustPath;
 use crate::utils::rust_token::TokenOptionEx;
 use proc_macro_error3::abort;
-use proc_macro2::{Delimiter, Literal, Span, TokenStream};
-use quote::quote;
+use proc_macro2::{Delimiter, Group, Ident, Literal, Span, TokenStream, TokenTree};
+use quote::{TokenStreamExt, quote};
 use std::collections::HashMap;
 use std::rc::Rc;
 use utils::rust_token::TokenBuffer;
@@ -94,7 +94,7 @@ pub fn pymeta(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
 
     if !code_region_parser_ctx.import_paths.is_empty() {
         let tokens = quote! {
-            ::pymeta::__internal::_pymeta_main {
+            ::pymeta::__internal::_pymeta_main! {
                 main { #input }
             }
         };
@@ -110,6 +110,7 @@ pub fn pymeta(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
 }
 
 #[proc_macro_attribute]
+#[proc_macro_error3::proc_macro_error]
 pub fn pymodule(_params: proc_macro::TokenStream, input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let mut input = TokenBuffer::from_iter(TokenStream::from(input));
     let Some(name_ident) = input.read_one().ident() else {
@@ -121,19 +122,20 @@ pub fn pymodule(_params: proc_macro::TokenStream, input: proc_macro::TokenStream
     if !input.read_one().eq_punct('!') {
         abort!(input.get_current_span_for_diagnostics(), "Expected `!`");
     }
-    let Some(body) = input.read_one().expect_group(Delimiter::Brace) else {
+    let Some(body_group) = input.read_one().expect_group(Delimiter::Brace) else {
         abort!(input.get_current_span_for_diagnostics(), "Expected `{<module body>}`");
     };
 
     let mut code_region_parser_ctx = CodeRegionParserCtx::new();
-    CodeRegionParser::new(&mut code_region_parser_ctx).parse(body.tokens());
+    CodeRegionParser::new(&mut code_region_parser_ctx).parse(body_group.tokens());
 
     let file = Span::call_site().file();
-    let file = Literal::raw_string(&file);
+    let file_literal = Literal::raw_string(&file);
+    let body = replace_dollar_with_meta_var(body_group.inner().stream());
 
     let tokens = quote! {
-        ::pymeta::__internal::make_pymodule_macro {
-            $ #name_ident #file #body
+        ::pymeta::__make_pymodule_macro! {
+            $ #name_ident #file_literal { #body }
         }
     };
     wrap_with_import_pymodule_macro_calls(tokens, code_region_parser_ctx.import_paths.iter()).into()
@@ -150,13 +152,34 @@ fn run_pymeta_executable(exe: PyMetaExecutable) -> TokenStream {
     exe_result.result.unwrap_or_else(|_| TokenStream::new())
 }
 
+/// replace `$` with `$d`
+fn replace_dollar_with_meta_var(tokens: TokenStream) -> TokenStream {
+    let d = Ident::new("d", Span::call_site());
+    let mut new_tokens = TokenStream::new();
+    for token in tokens {
+        match token {
+            TokenTree::Punct(dollar) if dollar.as_char() == '$' => {
+                new_tokens.append(dollar);
+                new_tokens.append(d.clone());
+            }
+            TokenTree::Group(group) => {
+                let mut new_group = Group::new(group.delimiter(), replace_dollar_with_meta_var(group.stream()));
+                new_group.set_span(group.span());
+                new_tokens.append(new_group);
+            }
+            token => new_tokens.append(token),
+        }
+    }
+    new_tokens
+}
+
 fn wrap_with_import_pymodule_macro_calls<'a>(
     mut tokens: TokenStream,
     import_paths: impl Iterator<Item = &'a Rc<SimpleRustPath>>,
 ) -> TokenStream {
     for import_path in import_paths {
         tokens = quote! {
-            #import_path { {#import_path} #tokens }
+            #import_path! { $ {#import_path} #tokens }
         };
     }
     tokens

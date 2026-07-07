@@ -50,7 +50,7 @@ impl PyMetaModule {
 #[derive(Debug)]
 pub(crate) struct PyMetaExecutable {
     pub main: Rc<PyMetaModule>,
-    //TODO: imported modules
+    // pub modules: 
 }
 
 impl PyMetaExecutable {

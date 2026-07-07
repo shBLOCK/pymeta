@@ -196,6 +196,7 @@ pub(crate) mod parser {
             let start = tokens.read_one().punct().unwrap();
 
             if let Some(meta_stmt) = MetaStmt::parse(tokens) {
+                #[allow(clippy::collapsible_if)]
                 if let MetaStmtBody::Import(ImportMetaStmt { path, .. }) = &meta_stmt.body {
                     if !self.ctx.import_paths.contains(path) {
                         self.ctx.import_paths.push(path.clone());

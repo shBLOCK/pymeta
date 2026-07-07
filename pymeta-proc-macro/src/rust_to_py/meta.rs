@@ -7,8 +7,8 @@ pub(crate) mod stmt {
     use crate::rust_to_py::py_code_gen::PyCodeGen;
     use crate::utils::rust_token::TokenOptionEx;
     use crate::utils::rust_token::{Token, TokenBuffer};
-    use proc_macro2::Delimiter;
     use proc_macro_error3::abort;
+    use proc_macro2::Delimiter;
 
     #[derive(Debug)]
     pub struct MetaStmt {
@@ -36,10 +36,10 @@ pub(crate) mod stmt {
         Import(ImportMetaStmt),
         Cfg(), //TODO
     }
-    
+
     impl MetaStmtBody {
         pub fn gen_py_code(&self, code_gen: &mut PyCodeGen) {
-            todo!()
+            todo!("good")
         }
     }
 
@@ -52,8 +52,8 @@ pub(crate) mod stmt {
     impl ImportMetaStmt {
         pub fn parse(tokens: &mut TokenBuffer) -> Self {
             let path = SimpleRustPath::parse(tokens).unwrap_or_else(|(span, txt)| abort!(span, txt));
-            let items = match tokens.read_one() {
-                Some(Token::Punct(dot)) if dot.eq_punct('.') => match tokens.current() {
+            let items = match tokens.current() {
+                Some(Token::Punct(dot)) if dot.eq_punct('.') => match tokens.seek(1).unwrap().current() {
                     Some(Token::Punct(star)) if star.eq_punct('*') => {
                         let star = star.clone();
                         tokens.seek(1).unwrap();

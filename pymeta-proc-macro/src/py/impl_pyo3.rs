@@ -1,34 +1,92 @@
+#![allow(non_snake_case)]
+
 use crate::py::PyMetaExecutionResult;
 use crate::py::error::{FrameSummary, PythonError, SourceLocation, StackSummary};
 use crate::rust_to_py::py_code_gen::PyMetaExecutable;
 use either::Either;
 use proc_macro2::TokenStream;
 use pyo3::exceptions::PySyntaxError;
-use pyo3::ffi::{c_str, PyObject};
+use pyo3::ffi::c_str;
 use pyo3::prelude::*;
 use pyo3::types::{PyCode, PyCodeInput, PyCodeMethods, PyDict, PyTraceback, PyTuple};
 use std::ffi::CString;
 use std::rc::Rc;
+use std::sync::OnceLock;
+
+macro_rules! include_cstr {
+    ($path:expr) => {
+        c_str!(include_str!($path))
+    };
+}
+
+macro_rules! pylib_path {
+    ($path:expr) => {
+        concat!(env!("CARGO_MANIFEST_DIR"), "/pylib/src/", $path)
+    };
+}
+
+macro_rules! importer_files_dict {
+    ($py:ident, $dir:expr, {$($key:literal $({$($item:tt)*})?),*}) => {
+        {
+            let dict = PyDict::new($py);
+            $(dict.set_item($key, _importer_files_dict_item!($py, $dir, $key $({$($item)*})?)).unwrap();)*
+            dict
+        }
+    };
+}
+
+macro_rules! _importer_files_dict_item {
+    ($py:ident, $dir:expr, $key:literal) => {
+        include_cstr!(concat!($dir, $key, ".py"))
+    };
+    ($py:ident, $dir:expr, $key:literal {$($item:tt)*}) => {
+        importer_files_dict!($py, concat!($dir, $key, "/"), {$($item)*})
+    };
+}
+
+fn initialize() {
+    static INITIALIZED: OnceLock<()> = OnceLock::new();
+    INITIALIZED.get_or_init(|| {
+        Python::initialize();
+        Python::attach(|py| {
+            let sys = py.import("sys").unwrap();
+            
+            sys.getattr("modules")
+                .unwrap()
+                .set_item("pymeta._pymeta", pyo3::wrap_pymodule!(_pymeta)(py))
+                .unwrap();
+            
+            {
+                // register PymetaBuiltinsImporter
+                let globals = PyDict::new(py);
+                py.run(include_cstr!(pylib_path!("init.py")), Some(&globals), None)
+                    .expect("Failed to run init.py");
+                let PymetaBuiltinsImporter = globals
+                    .get_item("PymetaBuiltinsImporter")
+                    .unwrap()
+                    .expect("No PymetaBuiltinsImporter in init.py");
+
+                let builtin_files = importer_files_dict!(py, pylib_path!(""), {
+                    "pymeta" {
+                        "__init__",
+                        "pattern"
+                    }
+                });
+                let builtins_importer = PymetaBuiltinsImporter
+                    .call1((builtin_files,))
+                    .expect("Failed to create PymetaBuiltinsImporter");
+
+                sys.getattr("meta_path")
+                    .unwrap()
+                    .call_method1("append", (builtins_importer,))
+                    .unwrap();
+            }
+        });
+    });
+}
 
 pub(crate) fn execute(exe: PyMetaExecutable) -> PyMetaExecutionResult {
-    Python::initialize();
-    Python::attach(|py| -> PyResult<()> {
-        let sys = py.import("sys")?;
-        let sys_modules: Bound<PyDict> = sys.getattr("modules")?.cast_into_exact()?;
-        sys_modules.set_item("_pymeta", pyo3::wrap_pymodule!(_pymeta)(py))?;
-        PyModule::from_code(
-            py,
-            c_str!(include_str!(concat!(
-                env!("CARGO_MANIFEST_DIR"),
-                "/pylib/src/",
-                "pymeta/__init__.py" // todo
-            ))),
-            c"pymeta.py", // todo
-            c"pymeta",
-        )?;
-        Ok(())
-    })
-        .unwrap_or_else(|e| panic!("Failed to initialize Python libs: {e:?}"));
+    initialize();
 
     let result = Python::attach(|py| -> PyResult<TokenStream> {
         // compile code
@@ -39,7 +97,7 @@ pub(crate) fn execute(exe: PyMetaExecutable) -> PyMetaExecutionResult {
         let code = PyCode::compile(
             py,
             &source_code,
-            &CString::new(&module.filename[..]).unwrap(),
+            &CString::new(module.filename.as_str()).unwrap(),
             PyCodeInput::File,
         )?;
 
@@ -71,88 +129,88 @@ pub(crate) fn execute(exe: PyMetaExecutable) -> PyMetaExecutionResult {
 
         Ok(tokens.borrow_mut().0.take().unwrap())
     })
-        .map_err(|err| {
-            // report exception
-            Python::attach(|py| {
-                let exception = err.into_value(py).into_bound(py);
+    .map_err(|err| {
+        // report exception
+        Python::attach(|py| {
+            let exception = err.into_value(py).into_bound(py);
 
-                let trace = if let Ok(traceback) = exception
-                    .getattr("__traceback__")
-                    .and_then(|tb| Ok(tb.cast_into_exact::<PyTraceback>()?))
-                {
-                    let traceback_mod = py.import("traceback").expect("Should be able to import `traceback`");
-                    let mut stack_summary: StackSummary = traceback_mod
-                        .call_method1("extract_tb", (traceback,))
-                        .expect("traceback.extract_tb()")
-                        .try_iter()
-                        .expect("traceback.extract_tb() should return an iterable object")
-                        .map(|frame| {
-                            let frame = frame.unwrap();
-                            let filename = frame.getattr("filename").unwrap().extract::<String>().unwrap();
-                            let file = exe
-                                .find_module_from_filename(&filename)
-                                .map(|m| Either::Left(Rc::clone(m)))
-                                .unwrap_or(Either::Right(filename));
-                            FrameSummary {
-                                frame_name: frame.getattr("name").unwrap().extract().unwrap(),
-                                location: SourceLocation::new(
-                                    file,
-                                    frame.getattr("lineno").unwrap().extract::<usize>().unwrap(),
-                                    frame.getattr("colno").unwrap().extract::<Option<usize>>().unwrap(),
-                                    frame.getattr("end_lineno").unwrap().extract::<Option<usize>>().unwrap(),
-                                    frame
-                                        .getattr("end_colno")
-                                        .unwrap()
-                                        .extract::<Option<usize>>()
-                                        .unwrap()
-                                        .map(|c| c - 1),
-                                ),
-                            }
-                        })
-                        .collect();
-                    stack_summary.reverse();
-                    Some(Either::Left(stack_summary))
-                } else if let Ok(syntax_error) = exception.cast::<PySyntaxError>() {
-                    let filename = syntax_error.getattr("filename").unwrap().extract::<String>().unwrap();
-                    let file = exe
-                        .find_module_from_filename(&filename)
-                        .map(|m| Either::Left(Rc::clone(m)))
-                        .unwrap_or(Either::Right(filename));
-                    Some(Either::Right(SourceLocation::new(
-                        file,
-                        syntax_error.getattr("lineno").unwrap().extract::<usize>().unwrap(),
-                        syntax_error
-                            .getattr("offset")
-                            .unwrap()
-                            .extract::<Option<usize>>()
-                            .unwrap()
-                            .map(|c| c - 1),
-                        syntax_error
-                            .getattr("end_lineno")
-                            .unwrap()
-                            .extract::<Option<usize>>()
-                            .unwrap(),
-                        syntax_error
-                            .getattr("end_offset")
-                            .unwrap()
-                            .extract::<Option<usize>>()
-                            .unwrap()
-                            .map(|c| c - 2),
-                    )))
-                } else {
-                    None
-                };
+            let trace = if let Ok(traceback) = exception
+                .getattr("__traceback__")
+                .and_then(|tb| Ok(tb.cast_into_exact::<PyTraceback>()?))
+            {
+                let traceback_mod = py.import("traceback").expect("Should be able to import `traceback`");
+                let mut stack_summary: StackSummary = traceback_mod
+                    .call_method1("extract_tb", (traceback,))
+                    .expect("traceback.extract_tb()")
+                    .try_iter()
+                    .expect("traceback.extract_tb() should return an iterable object")
+                    .map(|frame| {
+                        let frame = frame.unwrap();
+                        let filename = frame.getattr("filename").unwrap().extract::<String>().unwrap();
+                        let file = exe
+                            .find_module_from_filename(&filename)
+                            .map(|m| Either::Left(Rc::clone(m)))
+                            .unwrap_or(Either::Right(filename));
+                        FrameSummary {
+                            frame_name: frame.getattr("name").unwrap().extract().unwrap(),
+                            location: SourceLocation::new(
+                                file,
+                                frame.getattr("lineno").unwrap().extract::<usize>().unwrap(),
+                                frame.getattr("colno").unwrap().extract::<Option<usize>>().unwrap(),
+                                frame.getattr("end_lineno").unwrap().extract::<Option<usize>>().unwrap(),
+                                frame
+                                    .getattr("end_colno")
+                                    .unwrap()
+                                    .extract::<Option<usize>>()
+                                    .unwrap()
+                                    .map(|c| c - 1),
+                            ),
+                        }
+                    })
+                    .collect();
+                stack_summary.reverse();
+                Some(Either::Left(stack_summary))
+            } else if let Ok(syntax_error) = exception.cast::<PySyntaxError>() {
+                let filename = syntax_error.getattr("filename").unwrap().extract::<String>().unwrap();
+                let file = exe
+                    .find_module_from_filename(&filename)
+                    .map(|m| Either::Left(Rc::clone(m)))
+                    .unwrap_or(Either::Right(filename));
+                Some(Either::Right(SourceLocation::new(
+                    file,
+                    syntax_error.getattr("lineno").unwrap().extract::<usize>().unwrap(),
+                    syntax_error
+                        .getattr("offset")
+                        .unwrap()
+                        .extract::<Option<usize>>()
+                        .unwrap()
+                        .map(|c| c - 1),
+                    syntax_error
+                        .getattr("end_lineno")
+                        .unwrap()
+                        .extract::<Option<usize>>()
+                        .unwrap(),
+                    syntax_error
+                        .getattr("end_offset")
+                        .unwrap()
+                        .extract::<Option<usize>>()
+                        .unwrap()
+                        .map(|c| c - 2),
+                )))
+            } else {
+                None
+            };
 
-                PythonError {
-                    class: exception.get_type().fully_qualified_name().unwrap().extract().unwrap(),
-                    msg: exception
-                        .str()
-                        .and_then(|s| s.extract::<String>())
-                        .unwrap_or_else(|_| String::from("<failed to format exception>")),
-                    trace,
-                }
-            })
-        });
+            PythonError {
+                class: exception.get_type().fully_qualified_name().unwrap().extract().unwrap(),
+                msg: exception
+                    .str()
+                    .and_then(|s| s.extract::<String>())
+                    .unwrap_or_else(|_| String::from("<failed to format exception>")),
+                trace,
+            }
+        })
+    });
 
     PyMetaExecutionResult { exe, result }
 }
