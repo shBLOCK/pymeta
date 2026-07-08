@@ -1,5 +1,16 @@
 [package]
 name = "pymeta"
+version.workspace = true
+description.workspace = true
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+categories.workspace = true
+keywords.workspace = true
+include = ["/README.md"]
+
+[workspace.package]
 version = "0.1.0-alpha.1"
 description = "Metaprogramming Rust in Python!"
 authors = ["shBLOCK <shblock3@gmail.com>"]
@@ -12,15 +23,11 @@ categories = [
     "development-tools::build-utils"
 ]
 keywords = ["proc-macro", "python", "meta-programming", "codegen"]
-include = [
-    "/src",
-    "/pylib",
-    "/README.md"
-]
 
 [workspace]
 members = [
     "pymeta-proc-macro",
+    "pymeta-proc-macro-backend",
     "pymeta-micropython-src"
 ]
 resolver = "3"
@@ -28,8 +35,12 @@ resolver = "3"
 [dependencies]
 pymeta-proc-macro = { path = "pymeta-proc-macro" }
 
-#[features]
+[workspace.dependencies]
+proc-macro2 = { version = "1.0.106", features = ["span-locations"] }
+proc-macro-error3 = { version = "3.0.2", default-features = false }
 
+[features]
+nightly = ["pymeta-proc-macro/nightly"]
 
 [profile.dev]
 debug = "line-tables-only"
@@ -42,5 +53,9 @@ inherits = "dev"
 debug = true
 
 
-[lints.clippy]
+[workspace.lints.clippy]
 unwrap_or_default = "allow"
+collapsible_if = "allow"
+
+[lints]
+workspace = true

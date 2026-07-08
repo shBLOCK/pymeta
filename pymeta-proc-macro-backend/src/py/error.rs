@@ -1,11 +1,12 @@
-use std::fmt::Write;
-use crate::rust_to_py::PY_MARKER;
 use crate::rust_to_py::py_code_gen::PyMetaModule;
 use crate::rust_to_py::py_source::PySrcSegment;
+use crate::rust_to_py::PY_MARKER;
+use crate::utils::span::SpanEx;
 use either::Either;
-use proc_macro::{Diagnostic, Level as DiagnosticLevel};
 use proc_macro2::Span;
+use proc_macro_error3::{Diagnostic, Level as DiagnosticLevel};
 use std::cell::OnceCell;
+use std::fmt::Write;
 use std::ops::Deref;
 use std::rc::Rc;
 
@@ -71,10 +72,41 @@ impl SourceLocation {
         }
     }
 
+    pub fn find_preceding_segment(&self) -> Option<Rc<PySrcSegment>> {
+        let start_column = self.start_column?;
+        if let Either::Left(ref module) = self.file {
+            for lineno in (1..=self.start_line).rev() {
+                if let Some(line) = module.source.lines.get(lineno - 1) {
+                    let mut column = line.indent + line.segments.iter().map(|s| s.code.chars().count()).sum::<usize>();
+                    for segment in line.segments.iter().rev() {
+                        let seg_end = column;
+
+                        if (lineno < self.start_line || seg_end <= start_column)
+                            && !segment.code.chars().all(char::is_whitespace)
+                        {
+                            return Some(Rc::clone(segment));
+                        }
+
+                        column -= segment.code.chars().count();
+                    }
+                }
+            }
+            None
+        } else {
+            None
+        }
+    }
+
     pub fn src_span(&self) -> Option<Span> {
         *self.src_span_cache.get_or_init(|| {
             if let Either::Left(ref _module) = self.file {
-                PySrcSegment::join_src_spans(self.segments().unwrap().iter().map(Rc::deref))
+                let segments = self.segments().unwrap();
+                if !segments.is_empty() {
+                    PySrcSegment::join_src_spans(segments.iter().map(Rc::deref))
+                } else {
+                    self.find_preceding_segment()
+                        .and_then(|seg| seg.src_span.as_ref().map(|span| span.inner().end_span()))
+                }
             } else {
                 None
             }
@@ -124,16 +156,12 @@ impl PythonError {
             Some(Either::Left(stack_summary)) => {
                 assert!(!stack_summary.is_empty());
                 let mut diagnostic = Diagnostic::spanned(
-                    stack_summary[0]
-                        .location
-                        .src_span()
-                        .unwrap_or(Span::call_site())
-                        .unwrap(),
+                    stack_summary[0].location.src_span().unwrap_or(Span::call_site()),
                     DiagnosticLevel::Error,
                     err_text,
                 );
 
-                diagnostic = diagnostic.note("Traceback (most recent call first):");
+                diagnostic = diagnostic.note("Traceback (most recent call first):".into());
                 let mut last_frame = None;
                 const REPEAT_CUTOFF: u32 = 3;
                 let mut repeating_frames = 0u32;
@@ -164,16 +192,10 @@ impl PythonError {
                         write!(text, " (Rust line {})", src_span.start().line).unwrap();
                     }
                     write!(text, ", in {}", frame.frame_name).unwrap();
-                    
-                    #[cfg(feature = "nightly_proc_macro_span")] // TODO FIXME
-                    if let Some(src_span) = frame.location.src_span() {
-                        diagnostic = diagnostic.span_note(src_span.unwrap(), text);
-                    } else {
-                        diagnostic = diagnostic.note(text);
-                    }
 
-                    #[cfg(not(feature = "nightly_proc_macro_span"))]
-                    {
+                    if let Some(src_span) = frame.location.src_span() {
+                        diagnostic = diagnostic.span_note(src_span, text);
+                    } else {
                         diagnostic = diagnostic.note(text);
                     }
                 }
@@ -189,7 +211,7 @@ impl PythonError {
             }
             Some(Either::Right(location)) => {
                 let diagnostic = Diagnostic::spanned(
-                    location.src_span().unwrap_or(Span::call_site()).unwrap(),
+                    location.src_span().unwrap_or(Span::call_site()),
                     DiagnosticLevel::Error,
                     err_text,
                 );
@@ -204,7 +226,7 @@ impl PythonError {
                 }
                 diagnostic.note(location_msg).emit();
             }
-            None => Diagnostic::spanned(proc_macro::Span::call_site(), DiagnosticLevel::Error, err_text).emit(),
+            None => Diagnostic::spanned(Span::call_site(), DiagnosticLevel::Error, err_text).emit(),
         }
     }
 }

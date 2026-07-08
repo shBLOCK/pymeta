@@ -12,8 +12,8 @@ pub(crate) mod stmt {
 
     #[derive(Debug)]
     pub struct MetaStmt {
-        pub ident: Rc<Ident>,
-        pub exclamation: Rc<Punct>,
+        pub _ident: Rc<Ident>,
+        pub _exclamation: Rc<Punct>,
         pub body: MetaStmtBody,
     }
 
@@ -26,7 +26,7 @@ pub(crate) mod stmt {
                     "import" => MetaStmtBody::Import(ImportMetaStmt::parse(tokens)),
                     _ => return None,
                 };
-                Some(Self { ident, exclamation, body })
+                Some(Self { _ident: ident, _exclamation: exclamation, body })
             })
         }
     }
@@ -46,7 +46,7 @@ pub(crate) mod stmt {
     #[derive(Debug)]
     pub struct ImportMetaStmt {
         pub path: Rc<SimpleRustPath>,
-        pub items: ImportItems,
+        pub(self) items: ImportItems,
     }
 
     impl ImportMetaStmt {
@@ -57,7 +57,7 @@ pub(crate) mod stmt {
                     Some(Token::Punct(star)) if star.eq_punct('*') => {
                         let star = star.clone();
                         tokens.seek(1).unwrap();
-                        ImportItems::Wildcard { star: star.clone() }
+                        ImportItems::Wildcard { _star: star.clone() }
                     }
                     Some(Token::Ident(_)) => ImportItems::Items(Box::new([ImportItem::parse(tokens)])),
                     Some(Token::Group(group)) => {
@@ -97,7 +97,7 @@ pub(crate) mod stmt {
     enum ImportItems {
         Module { r#as: Option<ImportItemAs> },
         Items(Box<[ImportItem]>),
-        Wildcard { star: Rc<Punct> },
+        Wildcard { _star: Rc<Punct> },
     }
 
     #[derive(Debug)]
@@ -120,7 +120,7 @@ pub(crate) mod stmt {
 
     #[derive(Debug)]
     struct ImportItemAs {
-        kw: Rc<Ident>,
+        _kw: Rc<Ident>,
         name: Rc<Ident>,
     }
 
@@ -131,7 +131,7 @@ pub(crate) mod stmt {
                 let Some(as_name) = tokens.read_one().expect_ident_by(|s| s != "as") else {
                     abort!(tokens.get_current_span_for_diagnostics(), "Expected identifier")
                 };
-                Some(ImportItemAs { kw, name: as_name })
+                Some(ImportItemAs { _kw: kw, name: as_name })
             })
         }
     }
@@ -145,9 +145,9 @@ pub(crate) mod expr {
 
     #[derive(Debug)]
     pub struct MetaExpr {
-        pub ident: Rc<Ident>,
-        pub exclamation: Rc<Punct>,
-        pub group: Rc<Group>,
+        pub _ident: Rc<Ident>,
+        pub _exclamation: Rc<Punct>,
+        pub _group: Rc<Group>,
         pub body: MetaExprBody,
     }
 
@@ -158,15 +158,15 @@ pub(crate) mod expr {
                 let exclamation = tokens.read_one().expect_punct('!')?;
                 let group = tokens.read_one().expect_group_by(|delim| delim != Delimiter::None)?;
                 let body = MetaExprBody::parse(ident.inner().to_string().as_str(), &group)?;
-                Some(Self { ident, exclamation, group, body })
+                Some(Self { _ident: ident, _exclamation: exclamation, _group: group, body })
             })
         }
     }
 
     #[derive(Debug)]
     pub enum MetaExprBody {
-        Quote(QuoteMetaExpr),
-        Pattern(PatternMetaExpr),
+        // Quote(QuoteMetaExpr),
+        // Pattern(PatternMetaExpr),
     }
 
     impl MetaExprBody {

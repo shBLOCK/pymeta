@@ -45,7 +45,8 @@ impl<T> ParseBuffer<T> {
     pub fn pos(&self) -> usize {
         self.pos
     }
-    
+
+    #[allow(unused)]
     pub fn set_pos(&mut self, pos: usize) -> Result<(), ()> {
         if pos > self.items.len() {
             return Err(());

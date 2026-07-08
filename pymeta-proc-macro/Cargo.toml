@@ -1,24 +1,23 @@
 [package]
 name = "pymeta-proc-macro"
-version = "0.1.0"
-edition = "2024"
-include = ["/pylib"]
+version.workspace = true
+edition.workspace = true
 
 [lib]
 proc-macro = true
 
 [dependencies]
-proc-macro2 = { version = "1.0.106", features = ["span-locations"] }
-proc-macro-error3 = { version = "3.0.2", default-features = false }
-quote = "1.0.46"
+pymeta-proc-macro-backend = { path = "../pymeta-proc-macro-backend" }
 
-#rustpython-vm = { git = "https://github.com/RustPython/RustPython.git", tag = "2025-11-10-main-55" }
-pyo3 = { version = "0.29.0" }
-
-rustc-literal-escaper = "0.0.8"
-either = "1.16.0"
-unicode-ident = "1.0.24"
-
+proc-macro2 = { workspace = true }
+proc-macro-error3 = { workspace = true }
 
 [features]
-nightly_proc_macro_span = ["proc-macro2/span-locations"]
+nightly = [
+    "proc-macro-error3/nightly",
+    "pymeta-proc-macro-backend/nightly"
+]
+
+
+[lints]
+workspace = true

@@ -1,17 +1,17 @@
 use super::py_source::builder::PySourceBuilder;
 use super::py_source::{PySource, PySrcSegment};
+use crate::rust_to_py::CONCAT_MARKER;
 use crate::rust_to_py::code_region::{
     CodeRegion, IdentWithPyExpr, PyExpr, PySegment, PyStmt, PyStmtWithIndentBlock, RustCode, RustCodeWithBlock,
 };
-use crate::rust_to_py::CONCAT_MARKER;
 use crate::utils::escape::*;
 use crate::utils::parse_buffer::ParseBuffer;
 use crate::utils::rust_token::{DelimiterEx, PunctEx, Token};
 use crate::utils::span::{CSpan, SpanEx};
 use either::Either;
-use proc_macro::{Diagnostic, Level as DiagnosticLevel};
-use proc_macro2::{Delimiter, Spacing};
+use proc_macro2::{Delimiter, Spacing, Span};
 use std::rc::Rc;
+use proc_macro_error3::{Diagnostic, Level as DiagnosticLevel};
 
 const INDENT_SIZE: usize = 4;
 
@@ -32,7 +32,7 @@ pub(crate) struct PyMetaModule {
 impl PyMetaModule {
     pub fn emit_source_dump(&self) {
         Diagnostic::spanned(
-            proc_macro::Span::call_site().end(), // TODO: refer to actual span for non-main module
+            Span::call_site(), // TODO: refer to actual span for non-main module
             DiagnosticLevel::Warning,
             format!(
                 "PyMeta source dump of \"{filename}\":\n{dump}",
@@ -50,7 +50,7 @@ impl PyMetaModule {
 #[derive(Debug)]
 pub(crate) struct PyMetaExecutable {
     pub main: Rc<PyMetaModule>,
-    // pub modules: 
+    // pub modules:
 }
 
 impl PyMetaExecutable {
@@ -465,6 +465,7 @@ impl PyCodeGen {
             CodeRegion::PyStmt(line) => self.append_py_logical_line(line),
             CodeRegion::PyStmtWithIndentBlock(region) => self.append_py_stmt_with_indent_block(region),
             CodeRegion::MetaStmt(meta_stmt) => meta_stmt.body.gen_py_code(self),
+            CodeRegion::PurePyBlock(block) => self.append_code_regions(block.content.iter()),
         }
     }
 

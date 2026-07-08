@@ -3,6 +3,7 @@ pub(crate) mod parse_buffer;
 pub(crate) mod parsing;
 pub(crate) mod rust_token;
 pub(crate) mod span;
+mod diagnostic;
 
 macro_rules! match_unwrap {
     ($var:ident in $pattern:pat = $expr:expr) => {{
@@ -15,35 +16,36 @@ pub(crate) use match_unwrap;
 use std::cmp::max;
 use std::str::FromStr;
 
-#[cfg(feature = "nightly_proc_macro_span")]
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
-pub(crate) struct LineColumn {
-    /// 1-indexed
-    pub line: u32,
-    /// 0-indexed
-    pub column: u32,
-}
+// #[cfg(feature = "nightly_proc_macro_span")]
+// #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+// pub(crate) struct LineColumn {
+//     /// 1-indexed
+//     pub line: u32,
+//     /// 0-indexed
+//     pub column: u32,
+// }
+// 
+// #[cfg(feature = "nightly_proc_macro_span")]
+// impl From<proc_macro2::LineColumn> for LineColumn {
+//     fn from(value: proc_macro2::LineColumn) -> Self {
+//         Self {
+//             line: value.line as u32,
+//             column: value.column as u32,
+//         }
+//     }
+// }
+// 
+// #[cfg(feature = "nightly_proc_macro_span")]
+// impl From<LineColumn> for proc_macro2::LineColumn {
+//     fn from(value: LineColumn) -> Self {
+//         Self {
+//             line: value.line as usize,
+//             column: value.column as usize,
+//         }
+//     }
+// }
 
-#[cfg(feature = "nightly_proc_macro_span")]
-impl From<proc_macro2::LineColumn> for LineColumn {
-    fn from(value: proc_macro2::LineColumn) -> Self {
-        Self {
-            line: value.line as u32,
-            column: value.column as u32,
-        }
-    }
-}
-
-#[cfg(feature = "nightly_proc_macro_span")]
-impl From<LineColumn> for proc_macro2::LineColumn {
-    fn from(value: LineColumn) -> Self {
-        Self {
-            line: value.line as usize,
-            column: value.column as usize,
-        }
-    }
-}
-
+#[allow(unused)]
 pub(crate) trait ResultOrOption<T, E> {
     fn is_good(&self) -> bool;
     fn is_bad(&self) -> bool;

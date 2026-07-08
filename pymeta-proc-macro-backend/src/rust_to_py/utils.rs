@@ -1,7 +1,6 @@
 use super::PY_MARKER;
 use crate::utils::rust_token::{Punct, TokenBuffer, TokenOptionEx};
 use crate::utils::span::CSpan;
-use proc_macro2::Delimiter;
 use std::rc::Rc;
 
 pub(super) trait TokenBufferEx {
@@ -12,7 +11,6 @@ pub(super) trait TokenBufferEx {
     fn read_unescaped_py_marker_escape(&mut self) -> Rc<Punct>;
     fn is_py_marker_start(&self) -> bool;
     fn is_py_marker_end(&self) -> bool;
-    fn is_indent_block(&self) -> bool;
 }
 impl TokenBufferEx for TokenBuffer {
     fn is_current_py_marker_escaped(&self) -> bool {
@@ -52,9 +50,5 @@ impl TokenBufferEx for TokenBuffer {
 
     fn is_py_marker_end(&self) -> bool {
         self.current().eq_punct(PY_MARKER) && !self.is_current_py_marker_escaped()
-    }
-
-    fn is_indent_block(&self) -> bool {
-        self.current().eq_punct(':') && self.peek(1).eq_group(Delimiter::Brace)
     }
 }

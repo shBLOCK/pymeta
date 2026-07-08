@@ -31,6 +31,7 @@ pub(crate) struct Group {
     tokens: Rc<[Token]>,
 }
 
+#[allow(unused)]
 impl Ident {
     pub fn eq_ident<'a>(&self, ident: impl Into<&'a str>) -> bool {
         self.ident.to_string() == ident.into()
@@ -155,6 +156,7 @@ macro_rules! token_get_token_struct_fn {
     };
 }
 
+#[allow(unused)]
 impl Token {
     pub fn span(&self) -> Rc<CSpan> {
         match self {
@@ -250,6 +252,7 @@ impl quote::ToTokens for TokenBuffer {
     }
 }
 
+#[allow(unused)]
 pub(crate) trait TokenOptionEx {
     fn ident(&self) -> Option<Rc<Ident>>;
     fn punct(&self) -> Option<Rc<Punct>>;

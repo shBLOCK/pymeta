@@ -3,7 +3,7 @@ from importlib.abc import InspectLoader, MetaPathFinder
 import importlib.util
 
 
-class PymetaBuiltinsImporter(MetaPathFinder, InspectLoader):
+class PyMetaBuiltinsImporter(MetaPathFinder, InspectLoader):
     def __init__(self, files: dict):
         self.files = files
     

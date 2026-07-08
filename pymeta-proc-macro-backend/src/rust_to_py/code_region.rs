@@ -16,7 +16,7 @@ pub(crate) enum PySegment {
 
 #[derive(Debug)]
 pub(crate) struct PyStmt {
-    pub _marker: Rc<Punct>,
+    pub _marker: Option<Rc<Punct>>,
     pub segments: Rc<[PySegment]>,
 }
 
@@ -60,6 +60,13 @@ pub(crate) struct PyStmtWithIndentBlock {
     pub stmt: PyStmt,
     pub group: Rc<Group>,
     pub block: Box<[CodeRegion]>,
+}
+
+#[derive(Debug)]
+pub(crate) struct PurePyBlock {
+    pub _marker: Rc<Punct>,
+    pub _group: Rc<Group>,
+    pub content: Box<[CodeRegion]>,
 }
 
 #[derive(Debug)]
@@ -107,6 +114,8 @@ pub(crate) enum CodeRegion {
     PyStmtWithIndentBlock(PyStmtWithIndentBlock),
 
     MetaStmt(MetaStmt),
+
+    PurePyBlock(PurePyBlock),
 }
 
 macro_rules! impl_code_region_from_inner {
@@ -125,17 +134,30 @@ impl_code_region_from_inner!(PyStmt, PyStmt);
 impl_code_region_from_inner!(PyStmtWithIndentBlock, PyStmtWithIndentBlock);
 
 pub(crate) mod parser {
-    use super::{CodeRegion, PyExpr, PySegment, PyStmt, PyStmtWithIndentBlock, RustCode, RustCodeWithBlock};
+    use super::{
+        CodeRegion, PurePyBlock, PyExpr, PySegment, PyStmt, PyStmtWithIndentBlock, RustCode, RustCodeWithBlock,
+    };
     use crate::rust_to_py::CONCAT_MARKER;
     use crate::rust_to_py::meta::expr::MetaExpr;
     use crate::rust_to_py::meta::stmt::{ImportMetaStmt, MetaStmt, MetaStmtBody};
     use crate::rust_to_py::utils::TokenBufferEx;
     use crate::utils::match_unwrap;
+    use crate::utils::parsing::SimpleRustPath;
     use crate::utils::rust_token::{Token, TokenBuffer, TokenOptionEx};
     use either::Either;
     use proc_macro_error3::abort;
+    use proc_macro2::Delimiter;
     use std::rc::Rc;
-    use crate::utils::parsing::SimpleRustPath;
+
+    #[derive(Clone)]
+    pub(crate) struct CodeRegionParserSettings {
+        pub pure_python_mode: bool,
+    }
+    impl Default for CodeRegionParserSettings {
+        fn default() -> Self {
+            Self { pure_python_mode: false }
+        }
+    }
 
     pub(crate) struct CodeRegionParserCtx {
         pub import_paths: Vec<Rc<SimpleRustPath>>,
@@ -149,6 +171,7 @@ pub(crate) mod parser {
 
     /// [Self::parse] parses a [TokenBuffer] into [CodeRegion]s
     pub(crate) struct CodeRegionParser<'a> {
+        settings: CodeRegionParserSettings,
         regions: Vec<CodeRegion>,
         ctx: &'a mut CodeRegionParserCtx,
     }
@@ -158,13 +181,20 @@ pub(crate) mod parser {
         Stmt(PyStmt),
         StmtWithIndentBlock(PyStmtWithIndentBlock),
         MetaStmt(MetaStmt),
+        PurePyBlock(PurePyBlock),
     }
 
     impl CodeRegionParser<'_> {
-        pub(crate) fn new(ctx: &mut CodeRegionParserCtx) -> CodeRegionParser<'_> {
-            CodeRegionParser { regions: Vec::new(), ctx }
+        pub(crate) fn new(settings: CodeRegionParserSettings, ctx: &mut CodeRegionParserCtx) -> CodeRegionParser<'_> {
+            CodeRegionParser { settings, regions: Vec::new(), ctx }
         }
-        
+
+        fn new_derived(parent: &mut Self, f: impl FnOnce(&mut CodeRegionParserSettings)) -> CodeRegionParser<'_> {
+            let mut settings = parent.settings.clone();
+            f(&mut settings);
+            CodeRegionParser::new(settings, parent.ctx)
+        }
+
         fn parse_py_segment(tokens: &mut TokenBuffer) -> PySegment {
             if tokens.is_py_marker_escape() {
                 PySegment::Token(Token::Punct(tokens.read_unescaped_py_marker_escape()))
@@ -190,13 +220,29 @@ pub(crate) mod parser {
         }
 
         fn parse_py(&mut self, tokens: &mut TokenBuffer) -> Option<ParsePyResult> {
-            if !tokens.is_py_marker_start() {
-                return None;
+            let start_marker = if !self.settings.pure_python_mode {
+                if !tokens.is_py_marker_start() {
+                    return None;
+                }
+                Some(tokens.read_one().punct().unwrap())
+            } else {
+                None
+            };
+
+            // pure Python block
+            if !self.settings.pure_python_mode
+                && let Some(group) = tokens.current().expect_group(Delimiter::Brace)
+            {
+                tokens.seek(1);
+                let content = Self::new_derived(self, |s| s.pure_python_mode = true).parse(group.tokens());
+                return Some(ParsePyResult::PurePyBlock(PurePyBlock {
+                    _marker: start_marker.unwrap(),
+                    _group: group,
+                    content,
+                }));
             }
-            let start = tokens.read_one().punct().unwrap();
 
             if let Some(meta_stmt) = MetaStmt::parse(tokens) {
-                #[allow(clippy::collapsible_if)]
                 if let MetaStmtBody::Import(ImportMetaStmt { path, .. }) = &meta_stmt.body {
                     if !self.ctx.import_paths.contains(path) {
                         self.ctx.import_paths.push(path.clone());
@@ -208,37 +254,49 @@ pub(crate) mod parser {
             let mut py_segments = Vec::new();
 
             loop {
-                if tokens.peek(-1).eq_punct(';') {
-                    return Some(ParsePyResult::Stmt(PyStmt {
-                        _marker: start,
-                        segments: py_segments.into(),
-                    }));
-                }
-
-                if tokens.is_py_marker_end() {
+                if !self.settings.pure_python_mode && tokens.is_py_marker_end() {
                     let end = tokens.read_one().punct().unwrap();
                     return Some(ParsePyResult::Expr(PyExpr {
-                        start_marker: start,
+                        start_marker: start_marker.unwrap(),
                         end_marker: end,
                         segments: py_segments.into(),
                     }));
                 }
 
-                if tokens.is_indent_block() {
-                    py_segments.push(PySegment::Token(tokens.read_one().unwrap().clone()));
-                    let group = tokens.read_one().group().unwrap();
-                    let group_tokens = group.tokens();
+                // indent block
+                if let Some((colon, group, block)) = tokens.try_run_or_rewind(|tokens| {
+                    let colon = tokens.read_one().expect_punct(':')?;
+                    let pure_py_marker = if tokens.is_py_marker_start() {
+                        Some(tokens.read_one().punct().unwrap())
+                    } else {
+                        None
+                    };
+                    let group = tokens.read_one().expect_group(Delimiter::Brace)?;
+                    let block = Self::new_derived(self, |s| {
+                        s.pure_python_mode = pure_py_marker.is_some();
+                    })
+                    .parse(group.tokens());
+                    Some((colon, group, block))
+                }) {
+                    py_segments.push(PySegment::Token(Token::Punct(colon)));
                     return Some(ParsePyResult::StmtWithIndentBlock(PyStmtWithIndentBlock {
                         stmt: PyStmt {
-                            _marker: start,
+                            _marker: start_marker,
                             segments: py_segments.into(),
                         },
                         group,
-                        block: CodeRegionParser::new(self.ctx).parse(group_tokens),
+                        block,
                     }));
-                }
+                };
 
                 py_segments.push(Self::parse_py_segment(tokens));
+
+                if tokens.peek(-1).eq_punct(';') {
+                    return Some(ParsePyResult::Stmt(PyStmt {
+                        _marker: start_marker,
+                        segments: py_segments.into(),
+                    }));
+                }
             }
         }
 
@@ -289,8 +347,10 @@ pub(crate) mod parser {
                         (_, ParsePyResult::Expr(expr)) => {
                             self.regions.push(CodeRegion::RustCode(vec![RustCode::PyExpr(expr)]))
                         }
+                        (_, ParsePyResult::PurePyBlock(block)) => self.regions.push(CodeRegion::PurePyBlock(block)),
                     }
                 } else {
+                    assert!(!self.settings.pure_python_mode);
                     let token = if tokens.is_py_marker_escape() {
                         &Token::Punct(tokens.read_unescaped_py_marker_escape())
                     } else {
@@ -298,7 +358,7 @@ pub(crate) mod parser {
                     };
                     match token {
                         Token::Group(group) => {
-                            let group_regions = Self::new(self.ctx).parse(group.tokens());
+                            let group_regions = Self::new_derived(&mut self, |_| {}).parse(group.tokens());
                             if group_regions
                                 .iter()
                                 .all(|region| matches!(region, CodeRegion::RustCode(_)))

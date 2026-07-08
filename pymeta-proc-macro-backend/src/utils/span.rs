@@ -1,8 +1,5 @@
-#[cfg(feature = "nightly_proc_macro_span")]
-use crate::utils::LineColumn;
-use proc_macro2::Span;
-#[cfg(feature = "nightly_proc_macro_span")]
 use std::cell::OnceCell;
+use proc_macro2::{LineColumn, Span};
 use std::fmt::{Debug, Formatter};
 
 pub(crate) trait SpanOptionEx {
@@ -20,6 +17,7 @@ impl SpanOptionEx for Option<Span> {
     }
 }
 
+#[allow(unused)]
 pub(crate) trait SpanEx {
     fn start_span(&self) -> Span;
     fn end_span(&self) -> Span;
@@ -47,25 +45,21 @@ impl SpanEx for Span {
 /// [Span] operations can be expansive, see: <https://github.com/rust-lang/rust/issues/149331#issuecomment-3580649306>
 pub(crate) struct CSpan {
     span: Span,
-    #[cfg(feature = "nightly_proc_macro_span")]
     start: OnceCell<LineColumn>,
-    #[cfg(feature = "nightly_proc_macro_span")]
     end: OnceCell<LineColumn>,
 }
-
+#[allow(unused)]
 impl CSpan {
     pub fn inner(&self) -> Span {
         self.span
     }
 
-    #[cfg(feature = "nightly_proc_macro_span")]
     pub fn start(&self) -> LineColumn {
-        *self.start.get_or_init(|| self.span.start().into())
+        *self.start.get_or_init(|| self.span.start())
     }
-
-    #[cfg(feature = "nightly_proc_macro_span")]
+    
     pub fn end(&self) -> LineColumn {
-        *self.end.get_or_init(|| self.span.end().into())
+        *self.end.get_or_init(|| self.span.end())
     }
 }
 
@@ -73,9 +67,7 @@ impl From<Span> for CSpan {
     fn from(value: Span) -> Self {
         Self {
             span: value,
-            #[cfg(feature = "nightly_proc_macro_span")]
             start: OnceCell::new(),
-            #[cfg(feature = "nightly_proc_macro_span")]
             end: OnceCell::new(),
         }
     }

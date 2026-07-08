@@ -57,24 +57,25 @@ fn initialize() {
                 .unwrap();
             
             {
-                // register PymetaBuiltinsImporter
+                // register PyMetaBuiltinsImporter
                 let globals = PyDict::new(py);
                 py.run(include_cstr!(pylib_path!("init.py")), Some(&globals), None)
                     .expect("Failed to run init.py");
-                let PymetaBuiltinsImporter = globals
-                    .get_item("PymetaBuiltinsImporter")
+                let PyMetaBuiltinsImporter = globals
+                    .get_item("PyMetaBuiltinsImporter")
                     .unwrap()
-                    .expect("No PymetaBuiltinsImporter in init.py");
+                    .expect("No PyMetaBuiltinsImporter in init.py");
 
                 let builtin_files = importer_files_dict!(py, pylib_path!(""), {
                     "pymeta" {
                         "__init__",
+                        "_internal",
                         "pattern"
                     }
                 });
-                let builtins_importer = PymetaBuiltinsImporter
+                let builtins_importer = PyMetaBuiltinsImporter
                     .call1((builtin_files,))
-                    .expect("Failed to create PymetaBuiltinsImporter");
+                    .expect("Failed to create PyMetaBuiltinsImporter");
 
                 sys.getattr("meta_path")
                     .unwrap()
