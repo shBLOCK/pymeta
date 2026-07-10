@@ -1,20 +1,23 @@
-use proc_macro_error3;
 use pymeta_proc_macro_backend as backend;
+use pymeta_proc_macro_backend::utils::diagnostic::run_proc_macro;
 
 #[proc_macro]
-#[proc_macro_error3::proc_macro_error]
 pub fn _pymeta_main(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
-    backend::_pymeta_main(input.into()).into()
+    run_proc_macro(|| backend::_pymeta_main(input.into()))
+        .resolve_to_tokens()
+        .into()
 }
 
 #[proc_macro]
-#[proc_macro_error3::proc_macro_error]
 pub fn pymeta(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
-    backend::pymeta(input.into()).into()
+    run_proc_macro(|| backend::pymeta(input.into()))
+        .resolve_to_tokens()
+        .into()
 }
 
 #[proc_macro_attribute]
-#[proc_macro_error3::proc_macro_error]
 pub fn pymodule(params: proc_macro::TokenStream, input: proc_macro::TokenStream) -> proc_macro::TokenStream {
-    backend::pymodule(params.into(), input.into()).into()
+    run_proc_macro(|| backend::pymodule(params.into(), input.into()))
+        .resolve_to_tokens()
+        .into()
 }

@@ -12,6 +12,7 @@ use pyo3::types::{PyCode, PyCodeInput, PyCodeMethods, PyDict, PyTraceback, PyTup
 use std::ffi::CString;
 use std::rc::Rc;
 use std::sync::OnceLock;
+use crate::rust_to_py::meta::stmt::ImportMetaStmt;
 
 macro_rules! include_cstr {
     ($path:expr) => {
@@ -50,12 +51,12 @@ fn initialize() {
         Python::initialize();
         Python::attach(|py| {
             let sys = py.import("sys").unwrap();
-            
+
             sys.getattr("modules")
                 .unwrap()
                 .set_item("pymeta._pymeta", pyo3::wrap_pymodule!(_pymeta)(py))
                 .unwrap();
-            
+
             {
                 // register PyMetaBuiltinsImporter
                 let globals = PyDict::new(py);
@@ -102,6 +103,21 @@ pub(crate) fn execute(exe: PyMetaExecutable) -> PyMetaExecutionResult {
             PyCodeInput::File,
         )?;
 
+        // register pymodules
+        let PyMetaModuleImporter = py
+            .import("pymeta._internal")
+            .unwrap()
+            .getattr("PyMetaModuleImporter")
+            .unwrap();
+        PyMetaModuleImporter.call_method0("kill_all").expect("PyMetaModuleImporter.kill_all() failed");
+        let pymodule_importer = PyMetaModuleImporter.call1((ImportMetaStmt::PATH, {
+            let modules_dict = PyDict::new(py);
+            for module in &exe.modules {
+                modules_dict.set_item(&module.name, module.source.source_code()).unwrap();
+            }
+            modules_dict
+        })).expect("PyMetaModuleImporter() failed");
+
         // setup context
         let context = PyDict::new(py);
         context
@@ -117,9 +133,13 @@ pub(crate) fn execute(exe: PyMetaExecutable) -> PyMetaExecutionResult {
         py.run(c"import pymeta\nfrom pymeta import *", Some(&context), None)
             .expect("Failed to import pymeta");
 
-        code.run(Some(&context), None)?;
+        let result = code.run(Some(&context), None);
 
+        // cleanup
+        pymodule_importer.call_method0("kill").expect("PyMetaModuleImporter.kill() failed");
         tokens.call_method0("__exit__").expect("Tokens.__exit__() failed");
+
+        result?;
 
         // extract result
         let tokens: Bound<_pymeta::PyTokenStream> = tokens

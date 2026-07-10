@@ -954,7 +954,7 @@ impl Vec4 {
 </details>
 
 
-# Deep Dive
+# Deep Dive (OUTDATED!!! TODO: UPDATE)
 This section covers how this crate works under the hood.
 If you just want to use this crate, this section is probably not very relevant.
 

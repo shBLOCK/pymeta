@@ -3,7 +3,7 @@ pub(crate) mod parse_buffer;
 pub(crate) mod parsing;
 pub(crate) mod rust_token;
 pub(crate) mod span;
-mod diagnostic;
+pub mod diagnostic;
 
 macro_rules! match_unwrap {
     ($var:ident in $pattern:pat = $expr:expr) => {{

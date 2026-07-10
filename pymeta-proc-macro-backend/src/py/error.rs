@@ -4,11 +4,11 @@ use crate::rust_to_py::PY_MARKER;
 use crate::utils::span::SpanEx;
 use either::Either;
 use proc_macro2::Span;
-use proc_macro_error3::{Diagnostic, Level as DiagnosticLevel};
 use std::cell::OnceCell;
 use std::fmt::Write;
 use std::ops::Deref;
 use std::rc::Rc;
+use crate::utils::diagnostic::{Diagnostic, DiagnosticLevel};
 
 #[derive(Debug)]
 pub(crate) struct SourceLocation {
@@ -155,13 +155,13 @@ impl PythonError {
         match &self.trace {
             Some(Either::Left(stack_summary)) => {
                 assert!(!stack_summary.is_empty());
-                let mut diagnostic = Diagnostic::spanned(
+                let mut diagnostic = Diagnostic::new(
                     stack_summary[0].location.src_span().unwrap_or(Span::call_site()),
                     DiagnosticLevel::Error,
                     err_text,
                 );
 
-                diagnostic = diagnostic.note("Traceback (most recent call first):".into());
+                diagnostic = diagnostic.add_note(None, "Traceback (most recent call first):");
                 let mut last_frame = None;
                 const REPEAT_CUTOFF: u32 = 3;
                 let mut repeating_frames = 0u32;
@@ -175,7 +175,7 @@ impl PythonError {
                                 stack_iter.next().unwrap();
                             }
                             let not_shown_repeats = repeating_frames + 1 - REPEAT_CUTOFF;
-                            diagnostic = diagnostic.note(format!(
+                            diagnostic = diagnostic.add_note(None, format!(
                                 "|  [Previous line repeated {not_shown_repeats} more time{}]",
                                 if not_shown_repeats > 1 { "s" } else { "" }
                             ));
@@ -194,9 +194,9 @@ impl PythonError {
                     write!(text, ", in {}", frame.frame_name).unwrap();
 
                     if let Some(src_span) = frame.location.src_span() {
-                        diagnostic = diagnostic.span_note(src_span, text);
+                        diagnostic = diagnostic.add_note(src_span, text);
                     } else {
-                        diagnostic = diagnostic.note(text);
+                        diagnostic = diagnostic.add_note(None, text);
                     }
                 }
 
@@ -210,7 +210,7 @@ impl PythonError {
                 diagnostic.emit();
             }
             Some(Either::Right(location)) => {
-                let diagnostic = Diagnostic::spanned(
+                let diagnostic = Diagnostic::new(
                     location.src_span().unwrap_or(Span::call_site()),
                     DiagnosticLevel::Error,
                     err_text,
@@ -224,9 +224,9 @@ impl PythonError {
                 if let Some(src_span) = location.src_span() {
                     write!(location_msg, " (Rust line {})", src_span.start().line).unwrap();
                 }
-                diagnostic.note(location_msg).emit();
+                diagnostic.add_note(None, location_msg).emit();
             }
-            None => Diagnostic::spanned(Span::call_site(), DiagnosticLevel::Error, err_text).emit(),
+            None => Diagnostic::new(Span::call_site(), DiagnosticLevel::Error, err_text).emit(),
         }
     }
 }

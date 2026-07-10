@@ -1,72 +1,140 @@
-use crate::utils::rust_token::{Ident, Token, TokenBuffer};
-use proc_macro2::{Spacing, Span, TokenStream, TokenTree};
-use quote::TokenStreamExt;
-use std::fmt::{Display, Formatter};
+use crate::abort;
+use crate::utils::diagnostic::MultiSpan;
+use crate::utils::rust_token::{Group, Ident, Punct, Token, TokenBuffer, TokenOptionEx};
+use proc_macro2::{Delimiter, Spacing, Span, TokenStream};
+use quote::ToTokens;
+use std::fmt::{Debug, Display, Formatter};
 use std::hash::{Hash, Hasher};
 use std::rc::Rc;
 
 #[derive(Debug)]
-pub(crate) struct SimpleRustPath {
-    segments: Box<[Rc<Ident>]>,
-    is_root: bool,
-    tokens: Box<[Token]>,
+pub struct ParseError<E: Display + Debug> {
+    spans: Vec<Span>,
+    error: E,
+}
+impl<E: Display + Debug> ParseError<E> {
+    pub fn new(spans: impl MultiSpan, error: E) -> Self {
+        Self { spans: spans.into_spans(), error }
+    }
+
+    pub fn abort(self) -> ! {
+        abort!(&self.spans, "{}", self.error)
+    }
 }
 
-impl SimpleRustPath {
-    pub fn parse(tokens: &mut TokenBuffer) -> Result<Self, (Span, String)> {
-        tokens.try_run_or_rewind(|tokens| {
-            let mut segments = Vec::new();
-            let mut path_tokens = Vec::new();
-            let mut is_first = true;
-            let mut is_root = false;
-            loop {
-                let is_delim = if let [p1t @ Token::Punct(p1), p2t @ Token::Punct(p2), ..] =
-                    tokens.slice(tokens.pos()..)
-                    && p1.eq_punct(':')
-                    && p2.eq_punct(':')
-                    && p1.inner().spacing() == Spacing::Joint
-                    && p2.inner().spacing() == Spacing::Alone
-                {
-                    path_tokens.push(p1t.clone());
-                    path_tokens.push(p2t.clone());
-                    tokens.seek(2).unwrap();
-                    true
-                } else {
-                    false
-                };
+pub type ParseResult<T, E> = Result<T, ParseError<E>>;
 
-                if is_first {
-                    is_root = is_delim;
+#[derive(Clone, Debug)]
+pub struct DoubleColon(pub Rc<Punct>, pub Rc<Punct>);
+impl DoubleColon {
+    pub fn try_parse(tokens: &mut TokenBuffer) -> ParseResult<Self, &'static str> {
+        tokens.try_run_or_rewind(|tokens| {
+            let a = tokens
+                .read_one()
+                .expect_punct(':')
+                .map_err(|t| ParseError::new(t, "expected `:`"))?;
+            let b = tokens
+                .read_one()
+                .expect_punct(':')
+                .map_err(|t| ParseError::new(t, "expected `:`"))?;
+            if a.inner().spacing() != Spacing::Joint {
+                return Err(ParseError::new(a.span(), "wrong punct spacing"));
+            }
+            if b.inner().spacing() != Spacing::Alone {
+                return Err(ParseError::new(b.span(), "wrong punct spacing"));
+            }
+            Ok(Self(a, b))
+        })
+    }
+}
+impl ToTokens for DoubleColon {
+    fn to_tokens(&self, tokens: &mut TokenStream) {
+        self.0.to_tokens(tokens);
+        self.1.to_tokens(tokens);
+    }
+}
+
+#[derive(Debug)]
+pub(crate) struct RustSimplePath {
+    pub root: Option<DoubleColon>,
+    pub segments: Box<[Rc<Ident>]>,
+    pub separators: Box<[DoubleColon]>,
+}
+impl RustSimplePath {
+    pub fn try_parse(tokens: &mut TokenBuffer) -> ParseResult<Self, &'static str> {
+        tokens.try_run_or_rewind(|tokens| {
+            let mut root = None;
+            let mut segments = Vec::new();
+            let mut separators = Vec::new();
+            for i in 0.. {
+                let sep = DoubleColon::try_parse(tokens);
+
+                if i == 0 {
+                    root = sep.as_ref().ok().cloned();
                 }
-                if is_delim || is_first {
-                    if let Some(seg_token @ Token::Ident(seg)) = tokens.read_one() {
+                if sep.is_ok() || i == 0 {
+                    if let Some(Token::Ident(seg)) = tokens.read_one() {
                         segments.push(seg.clone());
-                        path_tokens.push(seg_token.clone());
+                        if i != 0 {
+                            separators.push(sep.unwrap());
+                        }
                     } else {
-                        return Err((
+                        return Err(ParseError::new(
                             tokens.get_current_span_for_diagnostics(),
-                            "Invalid Rust path: expected identifier".into(),
+                            "invalid Rust path: expected identifier",
                         ));
                     }
                 } else {
                     break;
                 }
-
-                is_first = false;
+            }
+            if segments.is_empty() {
+                return Err(ParseError::new(
+                    tokens.get_current_span_for_diagnostics(),
+                    "invalid Rust path: empty",
+                ));
             }
             Ok(Self {
-                segments: segments.into_boxed_slice(),
-                is_root,
-                tokens: path_tokens.into_boxed_slice(),
+                root,
+                segments: segments.into(),
+                separators: separators.into(),
             })
         })
     }
+
+    pub fn is_root(&self) -> bool {
+        self.root.is_some()
+    }
+
+    pub fn total_span(&self) -> Span {
+        let start = self
+            .root
+            .as_ref()
+            .map(|it| it.0.span())
+            .unwrap_or_else(|| self.segments[0].span())
+            .inner();
+        let end = self.segments.last().unwrap().span().inner();
+        start.join(end).unwrap_or(start)
+    }
+
+    // pub fn map_last_segment(&self, f: impl FnOnce(&Rc<Ident>) -> Ident) -> Self {
+    //     let mut segments = self.segments.to_vec();
+    //     let last = Rc::new(f(segments.last().unwrap()));
+    //     *segments.last_mut().unwrap() = last.clone();
+    //     let mut tokens = self.tokens.to_vec();
+    //     *tokens.last_mut().unwrap() = last.into();
+    //     Self {
+    //         segments: segments.into(),
+    //         is_root: self.is_root,
+    //         tokens: tokens.into(),
+    //     }
+    // }
 }
 
-impl PartialEq for SimpleRustPath {
+impl PartialEq for RustSimplePath {
     #[allow(clippy::cmp_owned)]
     fn eq(&self, other: &Self) -> bool {
-        self.is_root == other.is_root
+        self.is_root() == other.is_root()
             && self.segments.len() == other.segments.len()
             && self
                 .segments
@@ -76,31 +144,91 @@ impl PartialEq for SimpleRustPath {
     }
 }
 
-impl Eq for SimpleRustPath {}
+impl Eq for RustSimplePath {}
 
-impl Hash for SimpleRustPath {
+impl Hash for RustSimplePath {
     fn hash<H: Hasher>(&self, state: &mut H) {
-        self.is_root.hash(state);
+        self.is_root().hash(state);
         self.segments.iter().for_each(|s| s.inner().to_string().hash(state));
     }
 }
 
-impl quote::ToTokens for SimpleRustPath {
+impl ToTokens for RustSimplePath {
     fn to_tokens(&self, tokens: &mut TokenStream) {
-        tokens.append_all(self.tokens.iter().map(TokenTree::from));
+        for (i, segment) in self.segments.iter().enumerate() {
+            if i == 0 {
+                self.root.to_tokens(tokens);
+            } else {
+                self.separators[i - 1].to_tokens(tokens);
+            }
+            segment.to_tokens(tokens);
+        }
     }
 }
 
-impl Display for SimpleRustPath {
+impl Display for RustSimplePath {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        let mut first = true;
-        for segment in &self.segments {
-            if !first || self.is_root {
+        for (i, segment) in self.segments.iter().enumerate() {
+            if i != 0 || self.is_root() {
                 f.write_str("::")?;
             }
             f.write_str(segment.inner().to_string().as_str())?;
-            first = false;
         }
         Ok(())
+    }
+}
+
+pub struct RustAttribute {
+    pub hash: Rc<Punct>,
+    pub group: Rc<Group>,
+    pub path: RustSimplePath,
+}
+impl RustAttribute {
+    pub fn try_parse(tokens: &mut TokenBuffer) -> ParseResult<Self, &'static str> {
+        tokens.try_run_or_rewind(|tokens| {
+            let hash = tokens
+                .read_one()
+                .expect_punct('#')
+                .map_err(|t| ParseError::new(t, "expected `#`"))?;
+            let group = tokens
+                .read_one()
+                .expect_group(Delimiter::Bracket)
+                .map_err(|t| ParseError::new(t, "expected `[...]`"))?;
+            let path = RustSimplePath::try_parse(&mut group.tokens())?;
+            Ok(Self { hash, group, path })
+        })
+    }
+}
+impl ToTokens for RustAttribute {
+    fn to_tokens(&self, tokens: &mut TokenStream) {
+        self.hash.to_tokens(tokens);
+        self.group.to_tokens(tokens);
+    }
+}
+
+pub struct RustVis {
+    pub pub_ident: Rc<Ident>,
+    pub params_group: Option<Rc<Group>>,
+}
+impl RustVis {
+    pub fn try_parse(tokens: &mut TokenBuffer) -> ParseResult<Self, &'static str> {
+        tokens.try_run_or_rewind(|tokens| {
+            let pub_ident = tokens
+                .read_one()
+                .expect_ident("pub")
+                .map_err(|t| ParseError::new(t, "expected `pub`"))?;
+            let params_group = tokens.read_one().expect_group(Delimiter::Parenthesis).ok();
+            Ok(Self { pub_ident, params_group })
+        })
+    }
+
+    pub fn is_pub(&self) -> bool {
+        self.params_group.is_none()
+    }
+}
+impl ToTokens for RustVis {
+    fn to_tokens(&self, tokens: &mut TokenStream) {
+        self.pub_ident.to_tokens(tokens);
+        self.params_group.to_tokens(tokens);
     }
 }

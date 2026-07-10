@@ -1,3 +1,4 @@
+use crate::utils::rust_token::{Ident, Punct, PunctEx};
 use crate::utils::span::{CSpan, SpanEx};
 use proc_macro2::Span;
 use std::borrow::Cow;
@@ -12,10 +13,10 @@ pub(crate) struct PySrcSegment {
 }
 
 impl PySrcSegment {
-    pub fn new(code: impl Into<Cow<'static, str>>, src_span: Option<Rc<CSpan>>) -> PySrcSegment {
+    pub fn new(code: impl Into<Cow<'static, str>>, src_span: impl Into<Option<Rc<CSpan>>>) -> PySrcSegment {
         Self {
             code: code.into(),
-            src_span,
+            src_span: src_span.into(),
         }
     }
 
@@ -31,6 +32,30 @@ impl PySrcSegment {
                 (a, b) => a.or(b),
             })
             .flatten()
+    }
+}
+
+impl From<&Rc<Punct>> for PySrcSegment {
+    fn from(value: &Rc<Punct>) -> Self {
+        Self::new(value.as_str(), value.span())
+    }
+}
+
+impl From<&Rc<Ident>> for PySrcSegment {
+    fn from(value: &Rc<Ident>) -> Self {
+        Self::new(value.inner().to_string(), value.span())
+    }
+}
+
+impl From<&'static str> for PySrcSegment {
+    fn from(value: &'static str) -> Self {
+        Self::new(value, None)
+    }
+}
+
+impl From<(&'static str, Rc<CSpan>)> for PySrcSegment {
+    fn from(value: (&'static str, Rc<CSpan>)) -> Self {
+        Self::new(value.0, value.1)
     }
 }
 
@@ -80,7 +105,7 @@ impl PySource {
 }
 
 pub(crate) mod builder {
-    use super::{PySrcSegment, PySource};
+    use super::{PySource, PySrcSegment};
     use either::Either;
     use std::cell::{RefCell, RefMut};
     use std::mem;
@@ -94,10 +119,7 @@ pub(crate) mod builder {
 
     impl PyLine {
         fn new(indent: Option<usize>) -> Self {
-            Self {
-                segments: Vec::new(),
-                indent,
-            }
+            Self { segments: Vec::new(), indent }
         }
 
         fn append(&mut self, segment: PySrcSegment) {
@@ -113,10 +135,7 @@ pub(crate) mod builder {
 
     impl IndentBlock {
         fn new(indent: usize) -> Self {
-            Self {
-                content: Vec::new(),
-                indent,
-            }
+            Self { content: Vec::new(), indent }
         }
 
         fn append(&mut self, segment: PySrcSegment) {
@@ -160,8 +179,8 @@ pub(crate) mod builder {
             self.indent_block_stack.last_mut().unwrap().borrow_mut()
         }
 
-        pub fn append(&mut self, segment: PySrcSegment) {
-            self.top().append(segment);
+        pub fn append(&mut self, segment: impl Into<PySrcSegment>) {
+            self.top().append(segment.into());
         }
 
         pub fn pop_last_segment_if(&mut self, predict: fn(&PySrcSegment) -> bool) {
@@ -243,9 +262,7 @@ pub(crate) mod builder {
                 was_empty_line = is_empty_line;
             }
 
-            PySource {
-                lines: lines.into_boxed_slice(),
-            }
+            PySource { lines: lines.into_boxed_slice() }
         }
     }
 }

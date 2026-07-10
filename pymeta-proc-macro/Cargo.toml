@@ -7,16 +7,12 @@ edition.workspace = true
 proc-macro = true
 
 [dependencies]
-pymeta-proc-macro-backend = { path = "../pymeta-proc-macro-backend" }
+pymeta-proc-macro-backend = { path = "../pymeta-proc-macro-backend", features = ["proc_macro"] }
 
 proc-macro2 = { workspace = true }
-proc-macro-error3 = { workspace = true }
 
 [features]
-nightly = [
-    "proc-macro-error3/nightly",
-    "pymeta-proc-macro-backend/nightly"
-]
+nightly_diagnostic = ["pymeta-proc-macro-backend/nightly_diagnostic"]
 
 
 [lints]

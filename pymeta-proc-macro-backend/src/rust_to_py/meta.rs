@@ -1,33 +1,45 @@
-use crate::utils::parsing::SimpleRustPath;
+use crate::utils::parsing::RustSimplePath;
 use crate::utils::rust_token::{Ident, Punct};
 use std::rc::Rc;
 
 pub(crate) mod stmt {
     use super::*;
+    use crate::abort;
     use crate::rust_to_py::py_code_gen::PyCodeGen;
+    use crate::rust_to_py::py_source::PySrcSegment;
     use crate::utils::rust_token::TokenOptionEx;
     use crate::utils::rust_token::{Token, TokenBuffer};
-    use proc_macro_error3::abort;
     use proc_macro2::Delimiter;
 
     #[derive(Debug)]
     pub struct MetaStmt {
-        pub _ident: Rc<Ident>,
+        pub ident: Rc<Ident>,
         pub _exclamation: Rc<Punct>,
         pub body: MetaStmtBody,
     }
 
     impl MetaStmt {
-        pub fn parse(tokens: &mut TokenBuffer) -> Option<Self> {
+        pub fn try_parse(tokens: &mut TokenBuffer) -> Option<Self> {
             tokens.try_run_or_rewind(|tokens| {
-                let ident = tokens.read_one().ident()?;
-                let exclamation = tokens.read_one().expect_punct('!')?;
+                let ident = tokens.read_one().ident().ok()?;
+                let exclamation = tokens.read_one().expect_punct('!').ok()?;
                 let body = match ident.inner().to_string().as_str() {
                     "import" => MetaStmtBody::Import(ImportMetaStmt::parse(tokens)),
                     _ => return None,
                 };
-                Some(Self { _ident: ident, _exclamation: exclamation, body })
+                Some(Self {
+                    ident,
+                    _exclamation: exclamation,
+                    body,
+                })
             })
+        }
+
+        pub fn codegen(&self, pcg: &mut PyCodeGen) {
+            match &self.body {
+                MetaStmtBody::Import(body) => body.codegen(self, pcg),
+                _ => todo!(),
+            }
         }
     }
 
@@ -37,27 +49,22 @@ pub(crate) mod stmt {
         Cfg(), //TODO
     }
 
-    impl MetaStmtBody {
-        pub fn gen_py_code(&self, code_gen: &mut PyCodeGen) {
-            todo!("good")
-        }
-    }
-
     #[derive(Debug)]
     pub struct ImportMetaStmt {
-        pub path: Rc<SimpleRustPath>,
+        pub path: Rc<RustSimplePath>,
         pub(self) items: ImportItems,
+        semicolon: Rc<Punct>,
     }
 
     impl ImportMetaStmt {
         pub fn parse(tokens: &mut TokenBuffer) -> Self {
-            let path = SimpleRustPath::parse(tokens).unwrap_or_else(|(span, txt)| abort!(span, txt));
+            let path = RustSimplePath::try_parse(tokens).unwrap_or_else(|e| e.abort());
             let items = match tokens.current() {
                 Some(Token::Punct(dot)) if dot.eq_punct('.') => match tokens.seek(1).unwrap().current() {
                     Some(Token::Punct(star)) if star.eq_punct('*') => {
                         let star = star.clone();
                         tokens.seek(1).unwrap();
-                        ImportItems::Wildcard { _star: star.clone() }
+                        ImportItems::Wildcard { star: star.clone() }
                     }
                     Some(Token::Ident(_)) => ImportItems::Items(Box::new([ImportItem::parse(tokens)])),
                     Some(Token::Group(group)) => {
@@ -85,11 +92,76 @@ pub(crate) mod stmt {
                 _ => ImportItems::Module { r#as: ImportItemAs::parse(tokens) },
             };
 
-            if !tokens.read_one().eq_punct(';') {
+            let Ok(semicolon) = tokens.read_one().expect_punct(';') else {
                 abort!(tokens.get_current_span_for_diagnostics(), "Expected `;`");
-            }
+            };
 
-            Self { path: Rc::new(path), items }
+            Self {
+                path: Rc::new(path),
+                items,
+                semicolon,
+            }
+        }
+
+        pub const PATH: &str = "pymeta._pymodules";
+        pub fn module_name(path: &Rc<RustSimplePath>) -> String {
+            let mut name = String::new();
+            for (i, seg) in path.segments.iter().enumerate() {
+                if i != 0 || path.is_root() {
+                    name.push_str("__");
+                }
+                name.push_str(seg.inner().to_string().as_str());
+            }
+            name
+        }
+
+        pub fn codegen(&self, meta_stmt: &MetaStmt, pcg: &mut PyCodeGen) {
+            let module_name = PySrcSegment::new(
+                Self::module_name(&self.path),
+                Some(Rc::new(self.path.total_span().into())),
+            );
+
+            pcg.py.new_line(None);
+            match &self.items {
+                ImportItems::Module { r#as } => {
+                    pcg.py.append(("import", meta_stmt.ident.span()));
+                    pcg.py.append(" ");
+                    pcg.py.append(Self::PATH);
+                    pcg.py.append(".");
+                    pcg.py.append(module_name);
+                    if let Some(r#as) = r#as {
+                        r#as.codegen(pcg);
+                    } else {
+                        pcg.py.append(" as ");
+                        pcg.py.append(self.path.segments.last().unwrap());
+                    }
+                }
+                ImportItems::Items(_) | ImportItems::Wildcard { .. } => {
+                    pcg.py.append(("from", meta_stmt.ident.span()));
+                    pcg.py.append(" ");
+                    pcg.py.append(Self::PATH);
+                    pcg.py.append(" ");
+                    pcg.py.append(("import", meta_stmt.ident.span()));
+                    pcg.py.append(" ");
+                    match &self.items {
+                        ImportItems::Items(items) => {
+                            pcg.py.append("(");
+                            for (i, item) in items.iter().enumerate() {
+                                if i != 0 {
+                                    pcg.py.append(", ");
+                                }
+                                item.codegen(pcg);
+                            }
+                            pcg.py.append(")");
+                        }
+                        ImportItems::Wildcard { star } => {
+                            pcg.py.append(star);
+                        }
+                        ImportItems::Module { .. } => unreachable!(),
+                    }
+                }
+            }
+            pcg.py.append(&self.semicolon);
         }
     }
 
@@ -97,7 +169,7 @@ pub(crate) mod stmt {
     enum ImportItems {
         Module { r#as: Option<ImportItemAs> },
         Items(Box<[ImportItem]>),
-        Wildcard { _star: Rc<Punct> },
+        Wildcard { star: Rc<Punct> },
     }
 
     #[derive(Debug)]
@@ -108,7 +180,7 @@ pub(crate) mod stmt {
 
     impl ImportItem {
         fn parse(tokens: &mut TokenBuffer) -> Self {
-            let Some(name) = tokens.read_one().expect_ident_by(|s| s != "as") else {
+            let Ok(name) = tokens.read_one().expect_ident_by(|s| s != "as") else {
                 abort!(tokens.get_current_span_for_diagnostics(), "Expected identifier");
             };
             Self {
@@ -116,23 +188,37 @@ pub(crate) mod stmt {
                 r#as: ImportItemAs::parse(tokens),
             }
         }
+
+        fn codegen(&self, pcg: &mut PyCodeGen) {
+            pcg.py.append(&self.name);
+            if let Some(ref r#as) = self.r#as {
+                r#as.codegen(pcg);
+            }
+        }
     }
 
     #[derive(Debug)]
     struct ImportItemAs {
-        _kw: Rc<Ident>,
+        kw: Rc<Ident>,
         name: Rc<Ident>,
     }
 
     impl ImportItemAs {
         fn parse(tokens: &mut TokenBuffer) -> Option<Self> {
             tokens.try_run_or_rewind(|tokens| {
-                let kw = tokens.read_one().expect_ident("as")?;
-                let Some(as_name) = tokens.read_one().expect_ident_by(|s| s != "as") else {
+                let kw = tokens.read_one().expect_ident("as").ok()?;
+                let Ok(name) = tokens.read_one().expect_ident_by(|s| s != "as") else {
                     abort!(tokens.get_current_span_for_diagnostics(), "Expected identifier")
                 };
-                Some(ImportItemAs { _kw: kw, name: as_name })
+                Some(ImportItemAs { kw, name })
             })
+        }
+
+        fn codegen(&self, pcg: &mut PyCodeGen) {
+            pcg.py.append(" ");
+            pcg.py.append(&self.kw);
+            pcg.py.append(" ");
+            pcg.py.append(&self.name);
         }
     }
 }
@@ -154,13 +240,22 @@ pub(crate) mod expr {
     impl MetaExpr {
         pub fn parse(tokens: &mut TokenBuffer) -> Option<MetaExpr> {
             tokens.try_run_or_rewind(|tokens| {
-                let ident = tokens.read_one().ident()?;
-                let exclamation = tokens.read_one().expect_punct('!')?;
-                let group = tokens.read_one().expect_group_by(|delim| delim != Delimiter::None)?;
+                let ident = tokens.read_one().ident().ok()?;
+                let exclamation = tokens.read_one().expect_punct('!').ok()?;
+                let group = tokens.read_one().expect_group_by(|delim| delim != Delimiter::None).ok()?;
                 let body = MetaExprBody::parse(ident.inner().to_string().as_str(), &group)?;
-                Some(Self { _ident: ident, _exclamation: exclamation, _group: group, body })
+                Some(Self {
+                    _ident: ident,
+                    _exclamation: exclamation,
+                    _group: group,
+                    body,
+                })
             })
         }
+
+        // pub fn codegen(pcg: &mut PyCodeGen) {
+        //
+        // }
     }
 
     #[derive(Debug)]

@@ -137,15 +137,15 @@ pub(crate) mod parser {
     use super::{
         CodeRegion, PurePyBlock, PyExpr, PySegment, PyStmt, PyStmtWithIndentBlock, RustCode, RustCodeWithBlock,
     };
+    use crate::abort;
     use crate::rust_to_py::CONCAT_MARKER;
     use crate::rust_to_py::meta::expr::MetaExpr;
     use crate::rust_to_py::meta::stmt::{ImportMetaStmt, MetaStmt, MetaStmtBody};
     use crate::rust_to_py::utils::TokenBufferEx;
     use crate::utils::match_unwrap;
-    use crate::utils::parsing::SimpleRustPath;
+    use crate::utils::parsing::RustSimplePath;
     use crate::utils::rust_token::{Token, TokenBuffer, TokenOptionEx};
     use either::Either;
-    use proc_macro_error3::abort;
     use proc_macro2::Delimiter;
     use std::rc::Rc;
 
@@ -160,7 +160,7 @@ pub(crate) mod parser {
     }
 
     pub(crate) struct CodeRegionParserCtx {
-        pub import_paths: Vec<Rc<SimpleRustPath>>,
+        pub import_paths: Vec<Rc<RustSimplePath>>,
     }
 
     impl CodeRegionParserCtx {
@@ -231,7 +231,7 @@ pub(crate) mod parser {
 
             // pure Python block
             if !self.settings.pure_python_mode
-                && let Some(group) = tokens.current().expect_group(Delimiter::Brace)
+                && let Ok(group) = tokens.current().expect_group(Delimiter::Brace)
             {
                 tokens.seek(1);
                 let content = Self::new_derived(self, |s| s.pure_python_mode = true).parse(group.tokens());
@@ -242,7 +242,7 @@ pub(crate) mod parser {
                 }));
             }
 
-            if let Some(meta_stmt) = MetaStmt::parse(tokens) {
+            if let Some(meta_stmt) = MetaStmt::try_parse(tokens) {
                 if let MetaStmtBody::Import(ImportMetaStmt { path, .. }) = &meta_stmt.body {
                     if !self.ctx.import_paths.contains(path) {
                         self.ctx.import_paths.push(path.clone());
@@ -265,15 +265,17 @@ pub(crate) mod parser {
 
                 // indent block
                 if let Some((colon, group, block)) = tokens.try_run_or_rewind(|tokens| {
-                    let colon = tokens.read_one().expect_punct(':')?;
+                    let colon = tokens.read_one().expect_punct(':').ok()?;
                     let pure_py_marker = if tokens.is_py_marker_start() {
                         Some(tokens.read_one().punct().unwrap())
                     } else {
                         None
                     };
-                    let group = tokens.read_one().expect_group(Delimiter::Brace)?;
+                    let group = tokens.read_one().expect_group(Delimiter::Brace).ok()?;
                     let block = Self::new_derived(self, |s| {
-                        s.pure_python_mode = pure_py_marker.is_some();
+                        if pure_py_marker.is_some() {
+                            s.pure_python_mode = true;
+                        }
                     })
                     .parse(group.tokens());
                     Some((colon, group, block))

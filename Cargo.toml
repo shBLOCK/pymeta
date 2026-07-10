@@ -37,10 +37,9 @@ pymeta-proc-macro = { path = "pymeta-proc-macro" }
 
 [workspace.dependencies]
 proc-macro2 = { version = "1.0.106", features = ["span-locations"] }
-proc-macro-error3 = { version = "3.0.2", default-features = false }
 
 [features]
-nightly = ["pymeta-proc-macro/nightly"]
+nightly_diagnostic = ["pymeta-proc-macro/nightly_diagnostic"]
 
 [profile.dev]
 debug = "line-tables-only"

@@ -1,5 +1,5 @@
-use std::cell::OnceCell;
 use proc_macro2::{LineColumn, Span};
+use std::cell::OnceCell;
 use std::fmt::{Debug, Formatter};
 
 pub(crate) trait SpanOptionEx {
@@ -21,19 +21,25 @@ impl SpanOptionEx for Option<Span> {
 pub(crate) trait SpanEx {
     fn start_span(&self) -> Span;
     fn end_span(&self) -> Span;
-    
+
     fn join_or_fallback(self, other: Option<Span>) -> Span;
 }
 
+#[allow(clippy::needless_return)]
 impl SpanEx for Span {
     fn start_span(&self) -> Span {
-        self.unwrap().start().into()
+        cfg_select! {
+            feature = "proc_macro" => self.unwrap().start().into(),
+            _ => *self,
+        }
     }
 
     fn end_span(&self) -> Span {
-        self.unwrap().end().into()
+        cfg_select! {
+            feature = "proc_macro" => self.unwrap().end().into(),
+            _ => *self,
+        }
     }
-
 
     fn join_or_fallback(self, other: Option<Span>) -> Span {
         Some(self).join_or_fallback(other)
@@ -57,9 +63,16 @@ impl CSpan {
     pub fn start(&self) -> LineColumn {
         *self.start.get_or_init(|| self.span.start())
     }
-    
+
     pub fn end(&self) -> LineColumn {
         *self.end.get_or_init(|| self.span.end())
+    }
+
+    pub fn start_span(&self) -> CSpan {
+        self.span.start_span().into()
+    }
+    pub fn end_span(&self) -> CSpan {
+        self.span.end_span().into()
     }
 }
 

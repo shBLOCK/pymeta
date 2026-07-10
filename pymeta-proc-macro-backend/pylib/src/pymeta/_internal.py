@@ -23,11 +23,13 @@ class PyMetaModuleImporter(MetaPathFinder, InspectLoader):
             importer.kill()
 
     def find_spec(self, fullname, path, target=None):
-        if self.get_source(fullname) is not None:
+        if self.get_source(fullname) is not None or self.is_package(fullname):
             return importlib.util.spec_from_loader(fullname, self)
         return None
 
     def get_source(self, fullname):
+        if self.is_package(fullname):
+            return ""
         if fullname.startswith(self.path):
             module = fullname[len(self.path) + 1:]
             return self.modules.get(module)

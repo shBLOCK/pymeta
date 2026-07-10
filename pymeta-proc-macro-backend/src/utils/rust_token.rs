@@ -144,18 +144,6 @@ pub(crate) enum Token {
     Group(Rc<Group>),
 }
 
-macro_rules! token_get_token_struct_fn {
-    ($name:ident, $fn_name:ident) => {
-        #[allow(unused)]
-        pub fn $fn_name(&self) -> Option<Rc<$name>> {
-            match self {
-                Self::$name(it) => Some(Rc::clone(it)),
-                _ => None,
-            }
-        }
-    };
-}
-
 #[allow(unused)]
 impl Token {
     pub fn span(&self) -> Rc<CSpan> {
@@ -166,11 +154,6 @@ impl Token {
             Self::Group(group) => group.span(),
         }
     }
-
-    token_get_token_struct_fn!(Ident, ident);
-    token_get_token_struct_fn!(Punct, punct);
-    token_get_token_struct_fn!(Literal, literal);
-    token_get_token_struct_fn!(Group, group);
 
     pub fn eq_ident<'a>(&self, ident: impl Into<&'a str>) -> bool {
         match self {
@@ -193,6 +176,39 @@ impl Token {
         }
     }
 }
+
+macro_rules! token_struct_common {
+    ($name:ident, $fn_name:ident) => {
+        impl Token {
+            #[allow(unused)]
+            pub fn $fn_name(&self) -> Result<Rc<$name>, &Token> {
+                match self {
+                    Self::$name(it) => Ok(Rc::clone(it)),
+                    token => Err(token),
+                }
+            }
+        }
+        
+        #[allow(unused)]
+        impl From<Rc<$name>> for Token {
+            fn from(it: Rc<$name>) -> Self {
+                Self::$name(it)
+            }
+        }
+        
+        #[allow(unused)]
+        impl From<&$name> for TokenTree {
+            fn from(it: &$name) -> Self {
+                it.inner().clone().into()
+            }
+        }
+    };
+}
+
+token_struct_common!(Ident, ident);
+token_struct_common!(Punct, punct);
+token_struct_common!(Literal, literal);
+token_struct_common!(Group, group);
 
 impl From<TokenTree> for Token {
     fn from(value: TokenTree) -> Self {
@@ -238,6 +254,13 @@ impl TokenBuffer {
             .map(|token| token.span().inner().end_span())
             .unwrap_or_else(Span::call_site)
     }
+
+    pub fn into_last_token(mut self) -> Option<Token> {
+        if self.slice(self.pos()..).len() != 1 {
+            return None;
+        }
+        self.read_one().cloned()
+    }
 }
 
 impl FromIterator<TokenTree> for TokenBuffer {
@@ -254,36 +277,38 @@ impl quote::ToTokens for TokenBuffer {
 
 #[allow(unused)]
 pub(crate) trait TokenOptionEx {
-    fn ident(&self) -> Option<Rc<Ident>>;
-    fn punct(&self) -> Option<Rc<Punct>>;
-    fn literal(&self) -> Option<Rc<Literal>>;
-    fn group(&self) -> Option<Rc<Group>>;
+    fn ident(&self) -> Result<Rc<Ident>, &Self>;
+    fn punct(&self) -> Result<Rc<Punct>, &Self>;
+    fn literal(&self) -> Result<Rc<Literal>, &Self>;
+    fn group(&self) -> Result<Rc<Group>, &Self>;
 
     fn eq_punct(&self, c: char) -> bool;
     fn eq_group(&self, delimiter: Delimiter) -> bool;
 
-    fn expect_punct(&self, c: char) -> Option<Rc<Punct>>;
-    fn expect_ident_by(&self, f: impl FnOnce(&str) -> bool) -> Option<Rc<Ident>>;
-    fn expect_ident<'a>(&self, ident: impl Into<&'a str>) -> Option<Rc<Ident>>;
-    fn expect_group_by(&self, f: impl FnOnce(Delimiter) -> bool) -> Option<Rc<Group>>;
-    fn expect_group(&self, delimiter: Delimiter) -> Option<Rc<Group>>;
+    fn expect_punct(&self, c: char) -> Result<Rc<Punct>, &Self>;
+    fn expect_ident_by(&self, f: impl FnOnce(&str) -> bool) -> Result<Rc<Ident>, &Self>;
+    fn expect_ident<'a>(&self, ident: impl Into<&'a str>) -> Result<Rc<Ident>, &Self>;
+    fn expect_group_by(&self, f: impl FnOnce(Delimiter) -> bool) -> Result<Rc<Group>, &Self>;
+    fn expect_group(&self, delimiter: Delimiter) -> Result<Rc<Group>, &Self>;
+
+    fn maybe_unwrap_none_group(&self) -> Option<Token>;
 }
 
 impl TokenOptionEx for Option<&Token> {
-    fn ident(&self) -> Option<Rc<Ident>> {
-        self.and_then(|it| it.ident())
+    fn ident(&self) -> Result<Rc<Ident>, &Self> {
+        self.and_then(|it| it.ident().ok()).ok_or(self)
     }
 
-    fn punct(&self) -> Option<Rc<Punct>> {
-        self.and_then(|it| it.punct())
+    fn punct(&self) -> Result<Rc<Punct>, &Self> {
+        self.and_then(|it| it.punct().ok()).ok_or(self)
     }
 
-    fn literal(&self) -> Option<Rc<Literal>> {
-        self.and_then(|it| it.literal())
+    fn literal(&self) -> Result<Rc<Literal>, &Self> {
+        self.and_then(|it| it.literal().ok()).ok_or(self)
     }
 
-    fn group(&self) -> Option<Rc<Group>> {
-        self.and_then(|it| it.group())
+    fn group(&self) -> Result<Rc<Group>, &Self> {
+        self.and_then(|it| it.group().ok()).ok_or(self)
     }
 
     fn eq_punct(&self, c: char) -> bool {
@@ -300,33 +325,48 @@ impl TokenOptionEx for Option<&Token> {
         }
     }
 
-    fn expect_punct(&self, c: char) -> Option<Rc<Punct>> {
+    fn expect_punct(&self, c: char) -> Result<Rc<Punct>, &Self> {
         match self {
-            Some(Token::Punct(punct)) if punct.eq_punct(c) => Some(punct.clone()),
-            _ => None,
+            Some(Token::Punct(punct)) if punct.eq_punct(c) => Ok(punct.clone()),
+            _ => Err(self),
+        }
+    }
+    
+    fn expect_ident_by(&self, f: impl FnOnce(&str) -> bool) -> Result<Rc<Ident>, &Self> {
+        match self {
+            Some(Token::Ident(it)) if f(it.inner().to_string().as_str()) => Ok(it.clone()),
+            _ => Err(self),
         }
     }
 
-    fn expect_ident_by(&self, f: impl FnOnce(&str) -> bool) -> Option<Rc<Ident>> {
-        match self {
-            Some(Token::Ident(it)) if f(it.inner().to_string().as_str()) => Some(it.clone()),
-            _ => None,
-        }
-    }
-
-    fn expect_ident<'a>(&self, ident: impl Into<&'a str>) -> Option<Rc<Ident>> {
+    fn expect_ident<'a>(&self, ident: impl Into<&'a str>) -> Result<Rc<Ident>, &Self> {
         self.expect_ident_by(|s| s == ident.into())
     }
 
-    fn expect_group_by(&self, f: impl FnOnce(Delimiter) -> bool) -> Option<Rc<Group>> {
+    fn expect_group_by(&self, f: impl FnOnce(Delimiter) -> bool) -> Result<Rc<Group>, &Self> {
         match self {
-            Some(Token::Group(it)) if f(it.delimiter()) => Some(it.clone()),
-            _ => None,
+            Some(Token::Group(it)) if f(it.delimiter()) => Ok(it.clone()),
+            _ => Err(self),
         }
     }
 
-    fn expect_group(&self, delimiter: Delimiter) -> Option<Rc<Group>> {
+    fn expect_group(&self, delimiter: Delimiter) -> Result<Rc<Group>, &Self> {
         self.expect_group_by(|it| it == delimiter)
+    }
+
+    fn maybe_unwrap_none_group(&self) -> Option<Token> {
+        if let Some(Token::Group(group)) = self
+            && group.delimiter() == Delimiter::None
+        {
+            Some(
+                group
+                    .tokens()
+                    .into_last_token()
+                    .expect("this Delimiter::None group does not contain a single token"),
+            )
+        } else {
+            self.cloned()
+        }
     }
 }
 

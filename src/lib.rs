@@ -9,17 +9,30 @@ pub mod __internal {
     #[doc(hidden)]
     #[macro_export]
     macro_rules! __make_pymodule_macro {
-        { $d:tt $name:ident $file:literal { $($content:tt)* } } => {
-            #[macro_export] // todo: make this optional
-            macro_rules! $name {
-                { $d d:tt {$d($d import_path:tt)*} $d($d mac_start:ident)?$d(::$d mac_path:ident)* ! { $d($d body:tt)* } $d($d extra:tt)* } => {
+        {
+            $d:tt $dollar_d:ident,
+            $name:ident $mangled_name:ident $file:literal,
+            $vis:vis,
+            [$($macro_attrs:meta),*] [$($reexport_attrs:meta),*],
+            { $($content:tt)* },
+            $($extra:tt)*
+        } => {
+            $(#[$macro_attrs])*
+            #[doc(hidden)]
+            macro_rules! $mangled_name {
+                { $d $dollar_d:tt {$d($d import_path:tt)*} $d($d mac_start:ident)?$d(::$d mac_path:ident)* ! { $d($d body:tt)* } $d($d extra:tt)* } => {
                     $d($d mac_start)?$d(::$d mac_path)* ! {
                         $d($d body)*
                         module $name $file {$d($d import_path)*} { $($content)* }
+                        $($extra)*
                         $d($d extra)*
                     }
                 }
             }
+            //TODO: only do mangle & reexport if macro_export (pub)
+            $(#[$reexport_attrs])*
+            #[doc(inline)]
+            $vis use $mangled_name as $name;
         };
     }
 

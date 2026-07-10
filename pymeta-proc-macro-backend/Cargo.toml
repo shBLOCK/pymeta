@@ -12,7 +12,6 @@ include = ["/pylib"]
 
 [dependencies]
 proc-macro2 = { workspace = true }
-proc-macro-error3 = { workspace = true }
 
 quote = "1.0.46"
 
@@ -25,7 +24,8 @@ unicode-ident = "1.0.24"
 
 
 [features]
-nightly = ["proc-macro-error3/nightly"]
+proc_macro = []
+nightly_diagnostic = []
 #nightly_proc_macro_span = ["proc-macro2/span-locations"]
 
 
