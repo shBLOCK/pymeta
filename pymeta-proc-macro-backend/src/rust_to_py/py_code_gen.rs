@@ -35,7 +35,7 @@ impl PyMetaModule {
     pub fn emit_source_dump(&self) {
         Diagnostic::new(
             Span::call_site(), // TODO: refer to actual span for non-main module
-            DiagnosticLevel::Warning,
+            DiagnosticLevel::Note,
             format!(
                 "PyMeta source dump of \"{filename}\":\n{dump}",
                 filename = self.filename,
