@@ -423,7 +423,7 @@ impl PyCodeGen {
 
         self.py.new_line(None);
 
-        self.py.append("rust(");
+        self.py.append("emit(");
         region
             .iter()
             .for_each(|code| self.append_rust_code_as_parameter_list_element(code));
@@ -436,7 +436,7 @@ impl PyCodeGen {
 
         self.py.new_line(None);
 
-        self.py.append("with rust(");
+        self.py.append("with emit(");
         region_code
             .iter()
             .for_each(|code| self.append_rust_code_as_parameter_list_element(code));

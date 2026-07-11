@@ -17,7 +17,7 @@ __all__ = (
     "u8", "u16", "u32", "u64", "u128", "usize", "i8", "i16", "i32", "i64", "i128", "isize",
     "f32", "f64",
     "lit",
-    "rust",
+    "emit",
 )
 
 
@@ -71,7 +71,7 @@ class Tokens(MutableSequence[Token]):
         _results = out if out is not None else []
         _group_stack: list[Group] = []
 
-        def emit(token: Token):
+        def append(token: Token):
             if token.span is None:
                 token.span = span
             if _group_stack:
@@ -90,7 +90,7 @@ class Tokens(MutableSequence[Token]):
             group = _group_stack.pop(-1)
             if group.delimiter != delim:
                 raise ValueError(f"Group delimiter mismatch: opening={group.delimiter[0]}, closing={delim[1]}")
-            emit(group)
+            append(group)
 
         def parse(string: str):
             index = 0
@@ -111,7 +111,7 @@ class Tokens(MutableSequence[Token]):
                     if string[index - 1] == "'" and (index < len(string) and _pymeta.is_ident_start(string[index])) \
                     else Punct.ALONE
 
-                emit(Punct(string[start:index], spacing))
+                append(Punct(string[start:index], spacing))
                 return True
 
             def parse_number() -> bool:
@@ -170,13 +170,13 @@ class Tokens(MutableSequence[Token]):
                     r"(?P<num>(?:0[bo])?[\d_]+|0x[\da-fA-F_]+)(?P<suffix>[ui]\d+)?",
                     segment, flags=re.ASCII
                 ):
-                    emit(IntLiteral(int(match.group("num")), match.group("suffix") or None))
+                    append(IntLiteral(int(match.group("num")), match.group("suffix") or None))
                 # float
                 elif match := re.fullmatch(
                     r"(?P<num>\d+(?:\.\d*)?(?:[eE][+-]?\d+)?)(?P<suffix>f\d+)?",
                     segment, flags=re.ASCII
                 ):
-                    emit(FloatLiteral(float(match.group("num")), match.group("suffix") or None))
+                    append(FloatLiteral(float(match.group("num")), match.group("suffix") or None))
                 else:
                     raise ValueError(f"Invalid number literal: {segment!r}")
 
@@ -226,11 +226,11 @@ class Tokens(MutableSequence[Token]):
                 is_char = quote == "'"
                 match prefix:
                     case None:
-                        emit(StrLiteral(content, StrLiteral.CHR if is_char else StrLiteral.STR))
+                        append(StrLiteral(content, StrLiteral.CHR if is_char else StrLiteral.STR))
                     case 'b':
-                        emit(BytesLiteral(content.encode(), BytesLiteral.BYTE if is_char else BytesLiteral.BYTES))
+                        append(BytesLiteral(content.encode(), BytesLiteral.BYTE if is_char else BytesLiteral.BYTES))
                     case 'c':
-                        emit(StrLiteral(content, StrLiteral.CSTR))
+                        append(StrLiteral(content, StrLiteral.CSTR))
                     case _:
                         assert not "reachable"
 
@@ -256,11 +256,11 @@ class Tokens(MutableSequence[Token]):
                     ident = string[start:index]
                     match ident:
                         case "false":
-                            emit(BoolLiteral(False))
+                            append(BoolLiteral(False))
                         case "true":
-                            emit(BoolLiteral(True))
+                            append(BoolLiteral(True))
                         case _:
-                            emit(Ident(ident))
+                            append(Ident(ident))
                 elif parse_number():
                     pass
                 elif parse_str_literal():
@@ -272,21 +272,21 @@ class Tokens(MutableSequence[Token]):
             match item:
                 case Tokens():
                     for token in item:
-                        emit(token)
+                        append(token)
                 case Token():
-                    emit(item)
+                    append(item)
                 case int(value):
-                    emit(IntLiteral(value))
+                    append(IntLiteral(value))
                 case float(value):
-                    emit(FloatLiteral(value))
+                    append(FloatLiteral(value))
                 case bool(value):
-                    emit(BoolLiteral(value))
+                    append(BoolLiteral(value))
                 case bytes(bts) | bytearray(bts) | memoryview(bts):
-                    emit(BytesLiteral(bts))
+                    append(BytesLiteral(bts))
                 case tuple(tup):
-                    emit(Group(Group.PARENTHESIS, Tokens(items=tup)))
+                    append(Group(Group.PARENTHESIS, Tokens(items=tup)))
                 case list(lst):
-                    emit(Group(Group.BRACKET, Tokens(items=lst)))
+                    append(Group(Group.BRACKET, Tokens(items=lst)))
                 case Template() as template:
                     for part in template:
                         if isinstance(part, str):
@@ -767,7 +767,7 @@ def lit(
 
 
 # noinspection PyProtectedMember
-def rust(*args: CoerceToTokens, span: Span | None = None) -> None | Group:
+def emit(*args: CoerceToTokens, span: Span | None = None) -> None | Group:
     """Take a list of items, coerce them into ``Tokens``, then add them to the current ``Tokens`` context.
 
     :return: The last ``Token`` coerced from args if that token is a ``Group``, ``None`` elsewise.
