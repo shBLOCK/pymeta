@@ -10,6 +10,7 @@ use crate::utils::rust_token::TokenOptionEx;
 use proc_macro2::{Delimiter, Group, Ident, Literal, Span, TokenStream, TokenTree};
 use quote::{TokenStreamExt, quote};
 use std::collections::HashMap;
+use std::iter::repeat_n;
 use std::rc::Rc;
 use utils::rust_token::TokenBuffer;
 
@@ -29,7 +30,7 @@ const PYMODULE_PREFIX: &str = "__pymeta_pymodule_";
 /// It's expected that all `import!`d modules have been included when calling this macro.
 pub fn _pymeta_main(input: TokenStream) -> TokenStream {
     set_dummy_output(quote! { { loop {} } });
-    
+
     let mut input = TokenBuffer::from_iter(input);
     let mut main_module = None;
     #[allow(clippy::mutable_key_type)]
@@ -101,7 +102,7 @@ pub fn _pymeta_main(input: TokenStream) -> TokenStream {
 /// for now you can check out the examples in the crate's top-level documentation
 pub fn pymeta(input: TokenStream) -> TokenStream {
     set_dummy_output(quote! { { loop {} } });
-    
+
     let input = TokenBuffer::from_iter(input);
     let mut code_region_parser_ctx = CodeRegionParserCtx::new();
     let code_regions =
@@ -193,6 +194,52 @@ pub fn pymodule(params: TokenStream, input: TokenStream) -> TokenStream {
     .parse(body_group.tokens());
     let dollar_d = Ident::new("d", Span::call_site());
     let body = replace_dollar_with_meta_var(&dollar_d, body_group.inner().stream());
+    {
+        // source doc
+        let body_tokens = body_group.inner().stream().into_iter().collect::<Vec<_>>();
+        let source = if let (Some(first), Some(last)) = (body_tokens.first(), body_tokens.last()) {
+            first
+                .span()
+                .join(last.span())
+                .and_then(|s| s.source_text())
+                .map(|source| {
+                    // strip common indent
+                    let lines = source
+                        .lines()
+                        .map(|mut line| {
+                            let mut indent: usize = 0;
+                            while !line.is_empty() {
+                                let space_size = match line.as_bytes()[0] {
+                                    b' ' => 1,
+                                    b'\t' => 4,
+                                    _ => break,
+                                };
+                                indent += space_size;
+                                line = &line[1..];
+                            }
+                            (indent, line)
+                        })
+                        .collect::<Vec<_>>();
+                    let common_indent = lines.iter().map(|(indent, _)| *indent).skip(1).min().unwrap_or(0);
+
+                    let mut result = String::new();
+                    for (indent, line) in lines {
+                        let indent = indent.saturating_sub(common_indent);
+                        result.extend(repeat_n(' ', indent));
+                        result.push_str(line);
+                        result.push('\n');
+                    }
+                    result
+                })
+        } else {
+            None
+        };
+        let source = source.unwrap_or(body_group.inner().stream().to_string());
+        let source_doc = Literal::raw_string(
+            format!("\n\nPyMeta [pymodule][::pymeta::pymodule] `{name}` definition\n---\n```\n{source}\n```").as_str(),
+        );
+        reexport_attrs.push(quote! { doc = #source_doc });
+    }
 
     // output
     let tokens = quote! {
