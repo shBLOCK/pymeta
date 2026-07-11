@@ -3,7 +3,7 @@ extern crate proc_macro;
 use crate::utils::rust_token::Token;
 use crate::utils::span::CSpan;
 use proc_macro2::{Span, TokenStream};
-use quote::{ToTokens, TokenStreamExt, quote_spanned};
+use quote::{quote_spanned, ToTokens, TokenStreamExt};
 use std::fmt::Write;
 use std::fmt::{Display, Formatter};
 use std::panic::UnwindSafe;
@@ -277,6 +277,8 @@ impl ProcMacroResult {
         let mut tokens = self.tokens.or(self.dummy).unwrap_or_else(TokenStream::new);
         #[cfg(not(feature = "nightly_diagnostic"))]
         {
+            use proc_macro2::{TokenTree, Delimiter};
+            use quote::quote;
             let diagnostics = self.diagnostics.iter();
             tokens = {
                 let mut _tokens = tokens.clone().into_iter().collect::<Vec<_>>();
