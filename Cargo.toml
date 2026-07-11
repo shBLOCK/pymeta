@@ -27,8 +27,7 @@ keywords = ["proc-macro", "python", "meta-programming", "codegen"]
 [workspace]
 members = [
     "pymeta-proc-macro",
-    "pymeta-proc-macro-backend",
-    "pymeta-micropython-src"
+    "pymeta-proc-macro-backend"
 ]
 resolver = "3"
 
