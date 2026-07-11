@@ -264,7 +264,7 @@ mod _pymeta {
     #[pymethods]
     impl PySpan {
         fn __repr__(&self) -> String {
-            String::from("Span()") // TODO
+            format!("{:?}", self.0.inner())
         }
 
         #[staticmethod]

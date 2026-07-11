@@ -4,6 +4,7 @@ use crate::rust_to_py::code_region::parser::{CodeRegionParser, CodeRegionParserC
 use crate::rust_to_py::meta::stmt::ImportMetaStmt;
 use crate::rust_to_py::py_code_gen::{PyCodeGen, PyMetaExecutable, PyMetaModule};
 use crate::utils::LiteralRawStringExt;
+use crate::utils::diagnostic::set_dummy_output;
 use crate::utils::parsing::{RustAttribute, RustSimplePath, RustVis};
 use crate::utils::rust_token::TokenOptionEx;
 use proc_macro2::{Delimiter, Group, Ident, Literal, Span, TokenStream, TokenTree};
@@ -27,6 +28,8 @@ const PYMODULE_PREFIX: &str = "__pymeta_pymodule_";
 /// This is the final macro call that will actually execute the Python code.
 /// It's expected that all `import!`d modules have been included when calling this macro.
 pub fn _pymeta_main(input: TokenStream) -> TokenStream {
+    set_dummy_output(quote! { { loop {} } });
+    
     let mut input = TokenBuffer::from_iter(input);
     let mut main_module = None;
     #[allow(clippy::mutable_key_type)]
@@ -97,6 +100,8 @@ pub fn _pymeta_main(input: TokenStream) -> TokenStream {
 /// TODO: detailed documentation will be available here,
 /// for now you can check out the examples in the crate's top-level documentation
 pub fn pymeta(input: TokenStream) -> TokenStream {
+    set_dummy_output(quote! { { loop {} } });
+    
     let input = TokenBuffer::from_iter(input);
     let mut code_region_parser_ctx = CodeRegionParserCtx::new();
     let code_regions =
@@ -211,7 +216,7 @@ fn run_pymeta_executable(exe: PyMetaExecutable) -> TokenStream {
         exe_result.exe.modules.iter().for_each(|it| it.emit_source_dump());
     }
 
-    exe_result.result.unwrap_or_else(|_| TokenStream::new())
+    exe_result.result.unwrap_or_else(|_| abort!())
 }
 
 /// replace `$` with `$d`

@@ -1,17 +1,16 @@
+#[cfg(feature = "proc_macro")]
+extern crate proc_macro;
+use crate::utils::rust_token::Token;
+use crate::utils::span::CSpan;
 use proc_macro2::{Span, TokenStream};
 use quote::{ToTokens, TokenStreamExt, quote_spanned};
 use std::fmt::Write;
 use std::fmt::{Display, Formatter};
 use std::panic::UnwindSafe;
+use std::rc::Rc;
 use std::sync::Mutex;
 use std::thread::ThreadId;
 use std::{panic, thread};
-use std::rc::Rc;
-use crate::utils::rust_token::Token;
-use crate::utils::span::CSpan;
-
-#[cfg(feature = "proc_macro")]
-extern crate proc_macro;
 
 #[allow(unused)]
 #[derive(Copy, Clone, Debug)]
@@ -229,6 +228,11 @@ fn get_context() -> &'static mut Option<Context> {
 
 struct Context {
     diagnostics: Vec<Diagnostic>,
+    dummy: Option<TokenStream>,
+}
+
+pub fn set_dummy_output(tokens: TokenStream) {
+    let _ = get_context().as_mut().unwrap().dummy.insert(tokens);
 }
 
 #[macro_export]
@@ -253,20 +257,46 @@ macro_rules! abort {
 }
 
 #[doc(hidden)]
+#[derive(Debug)]
 pub struct AbortPayload;
+impl Display for AbortPayload {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        f.write_str("AbortPayload")
+    }
+}
 
 #[derive(Debug)]
 pub struct ProcMacroResult {
     pub tokens: Option<TokenStream>,
+    pub dummy: Option<TokenStream>,
     pub diagnostics: Box<[Diagnostic]>,
 }
 impl ProcMacroResult {
     pub fn resolve_to_tokens(self) -> TokenStream {
         #[allow(unused_mut)]
-        let mut tokens = self.tokens.unwrap_or_else(TokenStream::new);
+        let mut tokens = self.tokens.or(self.dummy).unwrap_or_else(TokenStream::new);
         #[cfg(not(feature = "nightly_diagnostic"))]
-        for diag in self.diagnostics {
-            diag.to_tokens(&mut tokens);
+        {
+            let diagnostics = self.diagnostics.iter();
+            tokens = {
+                let mut _tokens = tokens.clone().into_iter().collect::<Vec<_>>();
+                if let [TokenTree::Group(group)] = _tokens.as_slice()
+                    && group.delimiter() == Delimiter::Brace
+                {
+                    let group_tokens = group.stream();
+                    quote! {
+                        {
+                            #(#diagnostics;)*
+                            #group_tokens
+                        }
+                    }
+                } else {
+                    quote! {
+                        #(#diagnostics;)*
+                        #tokens
+                    }
+                }
+            };
         }
         tokens
     }
@@ -281,8 +311,17 @@ pub fn run_proc_macro(f: impl (FnOnce() -> TokenStream) + UnwindSafe) -> ProcMac
         );
         let _ = proc_macro_thread.insert(thread::current().id());
     }
-    let _ = get_context().insert(Context { diagnostics: Vec::new() });
+    let _ = get_context().insert(Context { diagnostics: Vec::new(), dummy: None });
+    let default_hook = panic::take_hook();
+    panic::set_hook(Box::new(move |info| {
+        if info.payload().is::<AbortPayload>() {
+            // do nothing
+        } else {
+            default_hook(info);
+        }
+    }));
     let result = panic::catch_unwind(f);
+    let _ = panic::take_hook();
     let context = { get_context().take().expect("Huh? Where did my Context go???") };
     PROC_MACRO_THREAD.lock().unwrap().take();
 
@@ -297,6 +336,7 @@ pub fn run_proc_macro(f: impl (FnOnce() -> TokenStream) + UnwindSafe) -> ProcMac
     };
     ProcMacroResult {
         tokens,
+        dummy: context.dummy,
         diagnostics: context.diagnostics.into(),
     }
 }

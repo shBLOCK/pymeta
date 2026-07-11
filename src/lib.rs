@@ -29,9 +29,9 @@ pub mod __internal {
                     }
                 }
             }
-            //TODO: only do mangle & reexport if macro_export (pub)
+            
             $(#[$reexport_attrs])*
-            #[doc(inline)]
+            #[doc(inline)] // crate private reexports are not documented currently: https://github.com/rust-lang/rust/issues/159109
             $vis use $mangled_name as $name;
         };
     }

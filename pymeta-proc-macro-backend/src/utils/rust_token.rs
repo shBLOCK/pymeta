@@ -56,7 +56,6 @@ impl Group {
 
 impl From<proc_macro2::Group> for Group {
     fn from(value: proc_macro2::Group) -> Self {
-        // TODO: check if this works properly when group delimiter is Delimiter::None
         let tokens = value.stream().into_iter().map(Token::from).collect();
         Self {
             group: value,

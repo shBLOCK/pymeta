@@ -419,7 +419,7 @@ pub(crate) mod parser {
                                 self.get_or_put_rust_code_region().push(RustCode::Code(token.clone()));
 
                                 // start a new region on semicolons to make the resulting Python code more readable
-                                //TODO: only do this for braces, or only when the region is too long
+                                //TODO: only do this for braces, or only when the region is too long (avoid doing it for `[f32; 3]` for example)
                                 if token.eq_punct(';') {
                                     self.regions.push(CodeRegion::RustCode(Vec::new()));
                                 }
