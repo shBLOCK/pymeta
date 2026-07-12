@@ -230,7 +230,7 @@ class Tokens(MutableSequence[Token]):
                     case 'b':
                         append(BytesLiteral(content.encode(), BytesLiteral.BYTE if is_char else BytesLiteral.BYTES))
                     case 'c':
-                        append(StrLiteral(content, StrLiteral.CSTR))
+                        append(BytesLiteral(content.encode(), BytesLiteral.CSTR))
                     case _:
                         assert not "reachable"
 
@@ -743,13 +743,13 @@ def lit(
     match (value, kwarg):
         case (str(string), ()) | (None, ("str", string)):
             return StrLiteral(str(string), StrLiteral.STR, span)
-        case (bytes(bts) | bytearray(bts) | memoryview(bts), ()) | (None, ("bytes", bts)):
+        case (bytes(bts) | bytearray(bts) | (memoryview() as bts), ()) | (None, ("bytes", bts)):
             return BytesLiteral(bytes(bts), BytesLiteral.BYTES, span)
         case (None, ("chr", char)):
             return StrLiteral(str(char), StrLiteral.CHR, span)
-        case (None, ("cstr", cstr)):
-            return StrLiteral(str(cstr), StrLiteral.CSTR, span)
-        case (None, ("byte", SupportsBytes(byte))):
+        case (None, ("cstr", str(cstr))):
+            return BytesLiteral(cstr.encode(), BytesLiteral.CSTR, span)
+        case (None, ("byte", SupportsBytes() as byte)):
             return BytesLiteral(byte, BytesLiteral.BYTE, span)
         case (None, ("byte", int(byte))):
             return BytesLiteral(byte.to_bytes(signed=True))
