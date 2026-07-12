@@ -24,7 +24,7 @@ fn format_module_name(file: &str, name: &str) -> String {
     format!("<{file}>::{name}")
 }
 
-const PYMODULE_PREFIX: &str = "__pymeta_pymodule_";
+const PYMETA_MODULE_PREFIX: &str = "__pymeta_module_";
 
 /// This is the final macro call that will actually execute the Python code.
 /// It's expected that all `import!`d modules have been included when calling this macro.
@@ -114,7 +114,7 @@ pub fn pymeta(input: TokenStream) -> TokenStream {
                 main { #input }
             }
         };
-        return wrap_with_import_pymodule_macro_calls(tokens, code_region_parser_ctx.import_paths.iter());
+        return wrap_with_import_pymeta_module_macro_calls(tokens, code_region_parser_ctx.import_paths.iter());
     }
 
     let main = PyCodeGen::gen_from_code_regions(
@@ -130,7 +130,7 @@ pub fn pymeta(input: TokenStream) -> TokenStream {
     })
 }
 
-pub fn pymodule(params: TokenStream, input: TokenStream) -> TokenStream {
+pub fn pymeta_module(params: TokenStream, input: TokenStream) -> TokenStream {
     let mut params = TokenBuffer::from_iter(params);
     let mut input = TokenBuffer::from_iter(input);
 
@@ -147,7 +147,7 @@ pub fn pymodule(params: TokenStream, input: TokenStream) -> TokenStream {
         let (apply_to_macro, apply_to_reexport) = match attr.path.to_string().as_str() {
             "macro_export" => abort!(
                 attr.path.total_span(),
-                "Explicit `#[macro_export]` not allowed, use `#[pymodule(pub)]` instead"
+                "Explicit `#[macro_export]` not allowed, use `#[pymeta_module(pub)]` instead"
             ),
             "allow" | "expect" | "warn" | "deny" | "forbid" => (true, true),
             "deprecated" => (true, true),
@@ -178,7 +178,7 @@ pub fn pymodule(params: TokenStream, input: TokenStream) -> TokenStream {
         abort!(input.get_current_span_for_diagnostics(), "Expected `!`");
     }
     let name = name_ident.inner().to_string();
-    let mangled_name_ident = Ident::new(&format!("{PYMODULE_PREFIX}{name}"), name_ident.span().inner());
+    let mangled_name_ident = Ident::new(&format!("{PYMETA_MODULE_PREFIX}{name}"), name_ident.span().inner());
     let file = Span::call_site().file();
     let file_literal = Literal::raw_string(&file);
 
@@ -236,14 +236,14 @@ pub fn pymodule(params: TokenStream, input: TokenStream) -> TokenStream {
         };
         let source = source.unwrap_or(body_group.inner().stream().to_string());
         let source_doc = Literal::raw_string(
-            format!("\n\nPyMeta [pymodule][::pymeta::pymodule] `{name}` definition\n---\n```\n{source}\n```").as_str(),
+            format!("\n\n[pymeta_module][::pymeta::pymeta_module] `{name}` definition\n---\n```\n{source}\n```").as_str(),
         );
         reexport_attrs.push(quote! { doc = #source_doc });
     }
 
     // output
     let tokens = quote! {
-        ::pymeta::__make_pymodule_macro! {
+        ::pymeta::__make_module_macro! {
             $ #dollar_d,
             #name_ident #mangled_name_ident #file_literal,
             #vis,
@@ -251,7 +251,7 @@ pub fn pymodule(params: TokenStream, input: TokenStream) -> TokenStream {
             { #body },
         }
     };
-    wrap_with_import_pymodule_macro_calls(tokens, code_region_parser_ctx.import_paths.iter())
+    wrap_with_import_pymeta_module_macro_calls(tokens, code_region_parser_ctx.import_paths.iter())
 }
 
 fn run_pymeta_executable(exe: PyMetaExecutable) -> TokenStream {
@@ -286,29 +286,17 @@ fn replace_dollar_with_meta_var(d: &Ident, tokens: TokenStream) -> TokenStream {
     new_tokens
 }
 
-fn wrap_with_import_pymodule_macro_calls<'a>(
+fn wrap_with_import_pymeta_module_macro_calls<'a>(
     mut tokens: TokenStream,
     import_paths: impl Iterator<Item = &'a Rc<RustSimplePath>>,
 ) -> TokenStream {
     for import_path in import_paths {
-        // let mangled = import_path.map_last_segment(|it| {
-        //     Ident::new(
-        //         &format!("{PYMODULE_PREFIX}{}", it.inner().to_string()),
-        //         it.span().inner(),
-        //     )
-        //     .into()
-        // });
         tokens = quote! {
             #import_path! { $ {#import_path} #tokens }
         };
     }
     tokens
 }
-
-// #[proc_macro]
-// pub fn pymodule_with_rust(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
-//     todo!()
-// }
 
 // /// ```
 // /// pymeta::macro_rules! {

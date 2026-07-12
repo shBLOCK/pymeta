@@ -103,14 +103,14 @@ pub(crate) fn execute(exe: PyMetaExecutable) -> PyMetaExecutionResult {
             PyCodeInput::File,
         )?;
 
-        // register pymodules
+        // register `pymeta_module`s
         let PyMetaModuleImporter = py
             .import("pymeta._internal")
             .unwrap()
             .getattr("PyMetaModuleImporter")
             .unwrap();
         PyMetaModuleImporter.call_method0("kill_all").expect("PyMetaModuleImporter.kill_all() failed");
-        let pymodule_importer = PyMetaModuleImporter.call1((ImportMetaStmt::PATH, {
+        let pymeta_module_importer = PyMetaModuleImporter.call1((ImportMetaStmt::PATH, {
             let modules_dict = PyDict::new(py);
             for module in &exe.modules {
                 modules_dict.set_item(&module.name, module.source.source_code()).unwrap();
@@ -136,7 +136,7 @@ pub(crate) fn execute(exe: PyMetaExecutable) -> PyMetaExecutionResult {
         let result = code.run(Some(&context), None);
 
         // cleanup
-        pymodule_importer.call_method0("kill").expect("PyMetaModuleImporter.kill() failed");
+        pymeta_module_importer.call_method0("kill").expect("PyMetaModuleImporter.kill() failed");
         tokens.call_method0("__exit__").expect("Tokens.__exit__() failed");
 
         result?;

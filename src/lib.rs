@@ -1,6 +1,6 @@
 #![doc = include_str!("../README.md")]
 
-pub use pymeta_proc_macro::{pymeta, pymodule};
+pub use pymeta_proc_macro::{pymeta, pymeta_module};
 
 #[doc(hidden)]
 pub mod __internal {
@@ -8,7 +8,7 @@ pub mod __internal {
 
     #[doc(hidden)]
     #[macro_export]
-    macro_rules! __make_pymodule_macro {
+    macro_rules! __make_module_macro {
         {
             $d:tt $dollar_d:ident,
             $name:ident $mangled_name:ident $file:literal,

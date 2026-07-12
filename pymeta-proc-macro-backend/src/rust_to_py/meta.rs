@@ -103,7 +103,7 @@ pub(crate) mod stmt {
             }
         }
 
-        pub const PATH: &str = "pymeta._pymodules";
+        pub const PATH: &str = "pymeta._modules";
         pub fn module_name(path: &Rc<RustSimplePath>) -> String {
             let mut name = String::new();
             for (i, seg) in path.segments.iter().enumerate() {
