@@ -13,6 +13,7 @@ use std::collections::HashMap;
 use std::iter::repeat_n;
 use std::rc::Rc;
 use utils::rust_token::TokenBuffer;
+use crate::rust_to_py::utils::py_markers_to_py_marker_idents;
 
 mod py;
 mod rust_to_py;
@@ -192,8 +193,7 @@ pub fn pymeta_module(params: TokenStream, input: TokenStream) -> TokenStream {
         &mut code_region_parser_ctx,
     )
     .parse(body_group.tokens());
-    let dollar_d = Ident::new("d", Span::call_site());
-    let body = replace_dollar_with_meta_var(&dollar_d, body_group.inner().stream());
+    let body = py_markers_to_py_marker_idents(body_group.inner().stream());
     {
         // source doc
         let body_tokens = body_group.inner().stream().into_iter().collect::<Vec<_>>();
@@ -236,7 +236,8 @@ pub fn pymeta_module(params: TokenStream, input: TokenStream) -> TokenStream {
         };
         let source = source.unwrap_or(body_group.inner().stream().to_string());
         let source_doc = Literal::raw_string(
-            format!("\n\n[pymeta_module][::pymeta::pymeta_module] `{name}` definition\n---\n```\n{source}\n```").as_str(),
+            format!("\n\n[pymeta_module][::pymeta::pymeta_module] `{name}` definition\n---\n```\n{source}\n```")
+                .as_str(),
         );
         reexport_attrs.push(quote! { doc = #source_doc });
     }
@@ -244,7 +245,7 @@ pub fn pymeta_module(params: TokenStream, input: TokenStream) -> TokenStream {
     // output
     let tokens = quote! {
         ::pymeta::__make_module_macro! {
-            $ #dollar_d,
+            $,
             #name_ident #mangled_name_ident #file_literal,
             #vis,
             [#(#macro_attrs),*] [#(#reexport_attrs),*],
@@ -269,56 +270,14 @@ fn run_pymeta_executable(exe: PyMetaExecutable) -> TokenStream {
     exe_result.result.unwrap_or_else(|_| abort!())
 }
 
-/// replace `$` with `$d`
-fn replace_dollar_with_meta_var(d: &Ident, tokens: TokenStream) -> TokenStream {
-    let mut new_tokens = TokenStream::new();
-    for token in tokens {
-        match token {
-            TokenTree::Punct(dollar) if dollar.as_char() == '$' => {
-                new_tokens.append(dollar);
-                new_tokens.append(d.clone());
-            }
-            TokenTree::Group(group) => {
-                let mut new_group = Group::new(group.delimiter(), replace_dollar_with_meta_var(d, group.stream()));
-                new_group.set_span(group.span());
-                new_tokens.append(new_group);
-            }
-            token => new_tokens.append(token),
-        }
-    }
-    new_tokens
-}
-
 fn wrap_with_import_pymeta_module_macro_calls<'a>(
     mut tokens: TokenStream,
     import_paths: impl Iterator<Item = &'a Rc<RustSimplePath>>,
 ) -> TokenStream {
     for import_path in import_paths {
         tokens = quote! {
-            #import_path! { $ {#import_path} #tokens }
+            #import_path! { {#import_path} #tokens }
         };
     }
     tokens
 }
-
-// /// ```
-// /// pymeta::macro_rules! {
-// ///     common {
-// ///         ...
-// ///     };
-// ///     (<pattern1>) => {
-// ///         ...
-// ///     };
-// ///     (<pattern2>) => {
-// ///         ...
-// ///     };
-// /// }
-// /// ```
-// /// =>
-// /// ```python
-// /// TODO
-// /// ```
-// #[proc_macro]
-// pub fn macro_rules(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
-//     todo!()
-// }

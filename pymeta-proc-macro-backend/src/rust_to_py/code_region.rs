@@ -221,10 +221,10 @@ pub(crate) mod parser {
 
         fn parse_py(&mut self, tokens: &mut TokenBuffer) -> Option<ParsePyResult> {
             let start_marker = if !self.settings.pure_python_mode {
-                if !tokens.is_py_marker_start() {
+                if !tokens.is_py_marker() {
                     return None;
                 }
-                Some(tokens.read_one().punct().unwrap())
+                Some(tokens.read_py_marker())
             } else {
                 None
             };
@@ -254,8 +254,8 @@ pub(crate) mod parser {
             let mut py_segments = Vec::new();
 
             loop {
-                if !self.settings.pure_python_mode && tokens.is_py_marker_end() {
-                    let end = tokens.read_one().punct().unwrap();
+                if !self.settings.pure_python_mode && tokens.is_py_marker() {
+                    let end = tokens.read_py_marker();
                     return Some(ParsePyResult::Expr(PyExpr {
                         start_marker: start_marker.unwrap(),
                         end_marker: end,
@@ -266,8 +266,8 @@ pub(crate) mod parser {
                 // indent block
                 if let Some((colon, group, block)) = tokens.try_run_or_rewind(|tokens| {
                     let colon = tokens.read_one().expect_punct(':').ok()?;
-                    let pure_py_marker = if tokens.is_py_marker_start() {
-                        Some(tokens.read_one().punct().unwrap())
+                    let pure_py_marker = if tokens.is_py_marker() {
+                        Some(tokens.read_py_marker())
                     } else {
                         None
                     };

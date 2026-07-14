@@ -187,14 +187,14 @@ macro_rules! token_struct_common {
                 }
             }
         }
-        
+
         #[allow(unused)]
         impl From<Rc<$name>> for Token {
             fn from(it: Rc<$name>) -> Self {
                 Self::$name(it)
             }
         }
-        
+
         #[allow(unused)]
         impl From<&$name> for TokenTree {
             fn from(it: &$name) -> Self {
@@ -330,7 +330,7 @@ impl TokenOptionEx for Option<&Token> {
             _ => Err(self),
         }
     }
-    
+
     fn expect_ident_by(&self, f: impl FnOnce(&str) -> bool) -> Result<Rc<Ident>, &Self> {
         match self {
             Some(Token::Ident(it)) if f(it.inner().to_string().as_str()) => Ok(it.clone()),

@@ -10,7 +10,7 @@ pub mod __internal {
     #[macro_export]
     macro_rules! __make_module_macro {
         {
-            $d:tt $dollar_d:ident,
+            $d:tt,
             $name:ident $mangled_name:ident $file:literal,
             $vis:vis,
             [$($macro_attrs:meta),*] [$($reexport_attrs:meta),*],
@@ -20,7 +20,7 @@ pub mod __internal {
             $(#[$macro_attrs])*
             #[doc(hidden)]
             macro_rules! $mangled_name {
-                { $d $dollar_d:tt {$d($d import_path:tt)*} $d($d mac_start:ident)?$d(::$d mac_path:ident)* ! { $d($d body:tt)* } $d($d extra:tt)* } => {
+                { {$d($d import_path:tt)*} $d($d mac_start:ident)?$d(::$d mac_path:ident)* ! { $d($d body:tt)* } $d($d extra:tt)* } => {
                     $d($d mac_start)?$d(::$d mac_path)* ! {
                         $d($d body)*
                         module $name $file {$d($d import_path)*} { $($content)* }
