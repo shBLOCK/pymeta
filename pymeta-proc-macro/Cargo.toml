@@ -13,6 +13,7 @@ proc-macro2 = { workspace = true }
 
 [features]
 nightly_diagnostic = ["pymeta-proc-macro-backend/nightly_diagnostic"]
+dump_source_on_error = ["pymeta-proc-macro-backend/dump_source_on_error"]
 
 
 [lints]

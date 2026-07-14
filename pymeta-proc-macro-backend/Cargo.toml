@@ -26,6 +26,7 @@ unicode-ident = "1.0.24"
 [features]
 proc_macro = []
 nightly_diagnostic = []
+dump_source_on_error = []
 #nightly_proc_macro_span = ["proc-macro2/span-locations"]
 
 

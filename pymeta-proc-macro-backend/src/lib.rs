@@ -259,8 +259,11 @@ fn run_pymeta_executable(exe: PyMetaExecutable) -> TokenStream {
 
     if let Err(ref error) = exe_result.result {
         error.emit_diagnostics();
-        exe_result.exe.main.emit_source_dump();
-        exe_result.exe.modules.iter().for_each(|it| it.emit_source_dump());
+        #[cfg(feature = "dump_source_on_error")]
+        {
+            exe_result.exe.main.emit_source_dump();
+            exe_result.exe.modules.iter().for_each(|it| it.emit_source_dump());
+        }
     }
 
     exe_result.result.unwrap_or_else(|_| abort!())
