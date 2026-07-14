@@ -1,5 +1,7 @@
+import weakref
 from abc import ABC, abstractmethod
 from collections import deque
+from collections.abc import Sequence
 from string.templatelib import Template
 from typing import SupportsInt, SupportsFloat, final, Collection, Final, SupportsBytes, MutableSequence, overload, Self, \
     Any, Iterable
@@ -11,7 +13,7 @@ from ._pymeta import Span
 __all__ = (
     "Span",
     "Token",
-    "Tokens",
+    "Tokens", "TokensView",
     "Group", "Punct", "Ident",
     "Literal", "IntLiteral", "FloatLiteral", "StrLiteral", "BytesLiteral",
     "u8", "u16", "u32", "u64", "u128", "usize", "i8", "i16", "i32", "i64", "i128", "isize",
@@ -30,10 +32,16 @@ class Token(ABC):
         self.span = span
 
     @abstractmethod
-    def __str__(self): ...
+    def __str__(self):
+        ...
 
     @abstractmethod
-    def __repr__(self): ...
+    def __repr__(self):
+        ...
+
+    @abstractmethod
+    def __eq__(self, other):
+        ...
 
     def join(self, items: Iterable[CoerceToTokens]) -> Tokens:
         tokens = Tokens()
@@ -46,28 +54,31 @@ class Token(ABC):
         return tokens
 
     @abstractmethod
-    def _append_to_tokenstream(self, stream: _pymeta.TokenStream): ...
+    def _append_to_tokenstream(self, stream: _pymeta.TokenStream):
+        ...
 
 
 type CoerceToTokens = (
-    Tokens | Token
+    Tokens | TokensView | Token
     | Template | str
     | int | float | bool | (bytes | bytearray | memoryview[Any])
     | (tuple | list)
 )
 
+
 @final
 class Tokens(MutableSequence[Token]):
     _CTX_STACK = deque()
 
-    __slots__ = ("_tokens",)
+    __slots__ = ("_tokens", "_views")
 
     @classmethod
     def _current_ctx(cls) -> Tokens:
         return cls._CTX_STACK[-1]
 
     @staticmethod
-    def _coerce(items: Iterable[CoerceToTokens], *, span: Span | None = None, out: list[Token] | None = None) -> list[Token]:
+    def _coerce(items: Iterable[CoerceToTokens], *, span: Span | None = None, out: list[Token] | None = None) -> list[
+        Token]:
         _results = out if out is not None else []
         _group_stack: list[Group] = []
 
@@ -270,7 +281,7 @@ class Tokens(MutableSequence[Token]):
 
         def process_one(item: CoerceToTokens):
             match item:
-                case Tokens():
+                case Tokens() | TokensView():
                     for token in item:
                         append(token)
                 case Token():
@@ -303,6 +314,9 @@ class Tokens(MutableSequence[Token]):
 
         return _results
 
+    _tokens: list[Token]
+    _views: weakref.WeakSet[TokensView] | None
+
     def __init__(
         self,
         *args: CoerceToTokens,
@@ -325,6 +339,8 @@ class Tokens(MutableSequence[Token]):
             case _:
                 raise ValueError("Multiple arg collections provided")
 
+        self._views = None
+
     def __enter__(self) -> Self:
         Tokens._CTX_STACK.append(self)
         return self
@@ -339,40 +355,61 @@ class Tokens(MutableSequence[Token]):
     def __repr__(self):
         return f"{self.__class__.__name__}({", ".join(map(repr, self._tokens))})"
 
-    def insert(self, index, value):
-        return self._tokens.insert(index, value)
+    def __len__(self):
+        return self._tokens.__len__()
 
     @overload
     def __getitem__(self, index: int) -> Token:
         ...
 
     @overload
-    def __getitem__(self, index: slice) -> Tokens:
+    def __getitem__(self, index: slice) -> TokensView:
         ...
 
     def __getitem__(self, index):
-        result = self._tokens.__getitem__(index)
-        if isinstance(result, list):
-            result = Tokens(*result)
-        return result
+        if isinstance(index, int):
+            return self._tokens.__getitem__(index)
+        elif isinstance(index, slice):
+            if index.step is not None:
+                raise NotImplementedError("stepped slicing is not supported")
+            return TokensView(self, index.start, index.stop)
+        else:
+            raise TypeError(index)
+
+    def _track_view(self, view: TokensView):
+        if self._views is None:
+            self._views = weakref.WeakSet()
+        self._views.add(view)
+
+    # region mutable operations
+    def _check_mutation(self):
+        if self._views:
+            raise RuntimeError(f"Can not mutate a {self.__class__.__name__} while views to it are active")
 
     def __setitem__(self, index, value):
+        self._check_mutation()
         self._tokens.__setitem__(index, value)
 
     def __delitem__(self, index):
+        self._check_mutation()
         self._tokens.__delitem__(index)
 
-    def __len__(self):
-        return self._tokens.__len__()
+    def insert(self, index, value):
+        self._check_mutation()
+        return self._tokens.insert(index, value)
 
     def append(self, *args: CoerceToTokens):
+        self._check_mutation()
         Tokens._coerce(args, out=self._tokens)
 
     def extend(self, items: Iterable[CoerceToTokens]):
+        self._check_mutation()
         Tokens._coerce(items, out=self._tokens)
 
     def reverse(self):
         raise NotImplementedError
+
+    # endregion
 
     def __reversed__(self):
         raise NotImplementedError
@@ -382,6 +419,87 @@ class Tokens(MutableSequence[Token]):
         for token in self:
             token._append_to_tokenstream(stream)
         return stream
+
+
+@final
+class TokensView(Sequence[Token]):
+    __slots__ = ("_referent", "_pos", "_end")
+
+    def __init__(self, referent: Tokens, pos: int | None, end: int | None):
+        self._referent = referent
+        referent._track_view(self)
+        pos = pos or 0
+        end = end or len(referent)
+        if pos < 0:
+            pos = len(referent) + pos
+        if end < 0:
+            end = len(referent) + end
+        self._pos = pos
+        self._end = end
+        self._check_slice()
+
+    def _check_slice(self):
+        if self._pos > self._end:
+            raise IndexError(f"pos({self._pos}) > end({self._end})")
+
+    @property
+    def referent(self):
+        return self._referent
+
+    @property
+    def pos(self) -> int:
+        return self._pos
+
+    @pos.setter
+    def pos(self, index: int):
+        index = index or 0
+        if index < 0:
+            index = len(self._referent) + index
+        self._pos = index
+        self._check_slice()
+
+    @property
+    def end(self) -> int:
+        return self._end
+
+    @end.setter
+    def end(self, index: int):
+        index = index or 0
+        if index < 0:
+            index = len(self._referent) + index
+        self._end = index
+        self._check_slice()
+
+    def _map_index(self, index: int) -> int:
+        if index >= 0:
+            if index >= len(self):
+                raise IndexError()
+            return self.pos + index
+        else:
+            if -index > len(self):
+                raise IndexError()
+            return self.end + index
+
+    @overload
+    def __getitem__(self, index: int, /) -> Token:
+        ...
+
+    @overload
+    def __getitem__(self, index: slice, /) -> Self:
+        ...
+
+    def __getitem__(self, index, /):
+        if isinstance(index, int):
+            return self._referent[self._map_index(index)]
+        elif isinstance(index, slice):
+            if index.step is not None:
+                raise NotImplementedError("stepped slicing is not supported")
+            return TokensView(self._referent, self._map_index(index.start), self._map_index(index.stop))
+        else:
+            raise TypeError(index)
+
+    def __len__(self) -> int:
+        return self.end - self.pos
 
 
 @final
@@ -422,6 +540,12 @@ class Group(Token):
     def __repr__(self):
         return f"{self.__class__.__name__}(\"{self.delimiter}\", {self.tokens!r}, {self.span!r})"
 
+    def __eq__(self, other):
+        """Compare if delimiter types are equal, group contents (tokens) are ignored."""
+        if not isinstance(other, Group):
+            return False
+        return self.delimiter == other.delimiter
+
     def __enter__(self):
         return self.tokens.__enter__()
 
@@ -448,6 +572,11 @@ class Ident(Token):
 
     def __repr__(self):
         return f"{self.__class__.__name__}({self.string!r}, {self.span!r})"
+
+    def __eq__(self, other):
+        if not isinstance(other, Ident):
+            return False
+        return self.string == other.string
 
     def _append_to_tokenstream(self, stream: _pymeta.TokenStream):
         stream.append_ident(self.string, self.span)
@@ -480,6 +609,11 @@ class Punct(Token):
 
     def __repr__(self):
         return f"{self.__class__.__name__}({self.chars!r}, {self.span!r})"
+
+    def __eq__(self, other):
+        if not isinstance(other, Punct):
+            return False
+        return self.chars == other.chars and self.spacing == other.spacing
 
     def _append_to_tokenstream(self, stream: _pymeta.TokenStream):
         if len(self.chars) == 0:
@@ -553,8 +687,15 @@ class IntLiteral(Literal[int]):
     def __repr__(self):
         return f"{self.__class__.__name__}({self.repr or self.value}, {self.type}, {self.span!r})"
 
+    def __eq__(self, other):
+        if not isinstance(other, IntLiteral):
+            return False
+        return self.value == other.value and self.type == other.type
+
+
     def _append_to_tokenstream(self, stream: _pymeta.TokenStream):
         stream.append_int_literal(self.value, str(self.type) if self.type else None, self.span)
+
 
 # @formatter:off
 u8 = IntLiteral.Type("u8", False)
@@ -628,8 +769,14 @@ class FloatLiteral(Literal[float]):
     def __repr__(self):
         return f"{self.__class__.__name__}({self.repr or self.value}, {self.type}, {self.span!r})"
 
+    def __eq__(self, other):
+        if not isinstance(other, FloatLiteral):
+            return False
+        return self.value == other.value and self.type == other.type
+
     def _append_to_tokenstream(self, stream: _pymeta.TokenStream):
         stream.append_float_literal(self.value, str(self.type) if self.type else None, self.span)
+
 
 # @formatter:off
 f32 = FloatLiteral.Type("f32", 32)
@@ -660,6 +807,11 @@ class StrLiteral(Literal[str]):
     def __repr__(self):
         return f"{self.__class__.__name__}({self.__str__()}, \"{self.type}\", {self.span!r})"
 
+    def __eq__(self, other):
+        if not isinstance(other, StrLiteral):
+            return False
+        return self.type == other.type and self.value == other.value
+
     def _append_to_tokenstream(self, stream: _pymeta.TokenStream):
         stream.append_str_literal(self.type, self.value, self.span)
 
@@ -689,6 +841,11 @@ class BytesLiteral(Literal[bytes]):
     def __repr__(self):
         return f"{self.__class__.__name__}({self.__str__()}, \"{self.type}\", {self.span!r})"
 
+    def __eq__(self, other):
+        if not isinstance(other, BytesLiteral):
+            return False
+        return self.type == other.type and self.value == other.value
+
     def _append_to_tokenstream(self, stream: _pymeta.TokenStream):
         stream.append_bytes_literal(self.type, self.value, self.span)
 
@@ -705,6 +862,11 @@ class BoolLiteral(Literal[bool]):
 
     def __repr__(self):
         return f"{self.__class__.__name__}({self.value}, {self.span!r})"
+
+    def __eq__(self, other):
+        if not isinstance(other, BoolLiteral):
+            return False
+        return self.value == other.value
 
     def _append_to_tokenstream(self, stream: _pymeta.TokenStream):
         stream.append_ident(self.__str__(), self.span)
