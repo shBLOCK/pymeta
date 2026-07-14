@@ -1,9 +1,10 @@
 use super::py_source::builder::PySourceBuilder;
 use super::py_source::{PySource, PySrcSegment};
-use crate::rust_to_py::CONCAT_MARKER;
 use crate::rust_to_py::code_region::{
     CodeRegion, IdentWithPyExpr, PyExpr, PySegment, PyStmt, PyStmtWithIndentBlock, RustCode, RustCodeWithBlock,
 };
+use crate::rust_to_py::{CONCAT_MARKER, PY_GLOBAL_OBJS_ARRAY_NAME};
+use crate::utils::diagnostic::{Diagnostic, DiagnosticLevel};
 use crate::utils::escape::*;
 use crate::utils::parse_buffer::ParseBuffer;
 use crate::utils::rust_token::{DelimiterEx, PunctEx, Token};
@@ -11,7 +12,6 @@ use crate::utils::span::{CSpan, SpanEx};
 use either::Either;
 use proc_macro2::{Delimiter, Spacing, Span};
 use std::rc::Rc;
-use crate::utils::diagnostic::{Diagnostic, DiagnosticLevel};
 
 const INDENT_SIZE: usize = 4;
 
@@ -28,7 +28,6 @@ pub(crate) struct PyMetaModule {
     pub name: String,
     pub filename: String,
     pub source: PySource,
-    pub spans: Box<[Rc<CSpan>]>,
 }
 
 impl PyMetaModule {
@@ -47,6 +46,11 @@ impl PyMetaModule {
     }
 }
 
+#[derive(Debug)]
+pub(crate) enum PyObj {
+    Span(Rc<CSpan>),
+}
+
 /// Represents the final "executable" ready to be executed by a Python implementation.
 ///
 /// Currently, this only contains the `main` module, but in the future imported modules will also be here.
@@ -54,9 +58,18 @@ impl PyMetaModule {
 pub(crate) struct PyMetaExecutable {
     pub main: Rc<PyMetaModule>,
     pub modules: Box<[Rc<PyMetaModule>]>,
+    pub objs: Box<[PyObj]>,
 }
 
 impl PyMetaExecutable {
+    pub fn new(main: Rc<PyMetaModule>, modules: Box<[Rc<PyMetaModule>]>, codegen_ctx: PyCodeGenContext) -> Self {
+        Self {
+            main,
+            modules,
+            objs: codegen_ctx.objs.into(),
+        }
+    }
+
     pub fn find_module_from_filename(&self, filename: &str) -> Option<&Rc<PyMetaModule>> {
         if self.main.filename == filename {
             Some(&self.main)
@@ -66,17 +79,28 @@ impl PyMetaExecutable {
     }
 }
 
-/// Builder struct for generating a [PyMetaModule].
-pub(crate) struct PyCodeGen {
-    pub py: PySourceBuilder,
-    spans: Vec<Rc<CSpan>>,
+pub(crate) struct PyCodeGenContext {
+    objs: Vec<PyObj>,
 }
-impl PyCodeGen {
+impl PyCodeGenContext {
     pub fn new() -> Self {
-        Self {
-            py: PySourceBuilder::new(),
-            spans: Vec::new(),
-        }
+        Self { objs: Vec::new() }
+    }
+    
+    fn add_obj(&mut self, obj: PyObj) -> usize {
+        self.objs.push(obj);
+        self.objs.len() - 1
+    }
+}
+
+/// Builder struct for generating a [PyMetaModule].
+pub(crate) struct PyCodeGen<'a> {
+    pub py: PySourceBuilder,
+    ctx: &'a mut PyCodeGenContext,
+}
+impl PyCodeGen<'_> {
+    pub fn new(ctx: &mut PyCodeGenContext) -> PyCodeGen<'_> {
+        PyCodeGen { py: PySourceBuilder::new(), ctx }
     }
 
     fn rust_literal_repr_to_python_code(repr: String) -> String {
@@ -219,10 +243,16 @@ impl PyCodeGen {
         self.py.pop_indent_block();
     }
 
-    fn append_span(&mut self, span: Rc<CSpan>) {
-        self.spans.push(span.clone());
-        let id = self.spans.len() - 1;
-        self.py.append(PySrcSegment::new(format!("__spans[{id}]"), span))
+    fn append_obj(&mut self, obj: PyObj, span: impl Into<Option<Rc<CSpan>>>) {
+        let id = self.ctx.add_obj(obj);
+        self.py.append(PySrcSegment::new(
+            format!("{PY_GLOBAL_OBJS_ARRAY_NAME}[{id}]"),
+            span.into(),
+        ));
+    }
+
+    fn append_span_obj(&mut self, span: Rc<CSpan>) {
+        self.append_obj(PyObj::Span(Rc::clone(&span)), span);
     }
 
     fn append_inline_py_expr(&mut self, expr: &PyExpr) {
@@ -266,7 +296,7 @@ impl PyCodeGen {
             }
         }
         self.py.append("\", ");
-        self.append_span(Rc::clone(&full_span));
+        self.append_span_obj(Rc::clone(&full_span));
         self.py.append((")", full_span));
     }
 
@@ -278,7 +308,7 @@ impl PyCodeGen {
                         format!(r#"Ident("{}", "#, ident.inner()),
                         ident.span(),
                     ));
-                    self.append_span(ident.span());
+                    self.append_span_obj(ident.span());
                     self.py.append((")", ident.span()));
                     self.py.append(", ");
                 }
@@ -295,7 +325,7 @@ impl PyCodeGen {
                         format!(r#"Punct('{char_str}', "{spacing}", "#),
                         punct.span(),
                     ));
-                    self.append_span(punct.span());
+                    self.append_span_obj(punct.span());
                     self.py.append((")", punct.span()));
                     self.py.append(", ");
                 }
@@ -373,7 +403,7 @@ impl PyCodeGen {
                         _ => panic!("Failed to parse literal: {repr:?}"),
                     };
 
-                    self.append_span(literal.span());
+                    self.append_span_obj(literal.span());
                     self.py.append((")", literal.span()));
                     self.py.append(", ");
                 }
@@ -390,7 +420,7 @@ impl PyCodeGen {
                 code.iter()
                     .for_each(|code| self.append_rust_code_as_parameter_list_element(code));
                 self.py.append(("), ", group.span()));
-                self.append_span(group.span());
+                self.append_span_obj(group.span());
                 self.py.append((")", group.span()));
                 self.py.append(", ");
             }
@@ -404,7 +434,7 @@ impl PyCodeGen {
                 self.py.append(("Tokens(", Rc::clone(&span)));
                 self.append_inline_py_expr(expr);
                 self.py.append((", span=", Rc::clone(&span)));
-                self.append_span(Rc::clone(&span));
+                self.append_span_obj(Rc::clone(&span));
                 self.py.append((")", span));
                 self.py.append(", ");
             }
@@ -448,7 +478,7 @@ impl PyCodeGen {
             ),
             None,
         ));
-        self.append_span(region.group.span());
+        self.append_span_obj(region.group.span());
         self.py.append(")):");
 
         self.py.push_indent_block(INDENT_SIZE);
@@ -477,12 +507,17 @@ impl PyCodeGen {
             name,
             filename,
             source: self.py.finish(),
-            spans: self.spans.into_boxed_slice(),
         }
     }
 
-    pub fn gen_from_code_regions<'a>(package: Option<String>, name: String, filename: String, regions: impl Iterator<Item = &'a CodeRegion>) -> PyMetaModule {
-        let mut generator = Self::new();
+    pub fn gen_from_code_regions<'a>(
+        package: Option<String>,
+        name: String,
+        filename: String,
+        regions: impl Iterator<Item = &'a CodeRegion>,
+        ctx: &mut PyCodeGenContext,
+    ) -> PyMetaModule {
+        let mut generator = Self::new(ctx);
         generator.append_code_regions(regions);
         generator.finish(package, name, filename)
     }

@@ -2,9 +2,12 @@
 
 use crate::py::PyMetaExecutionResult;
 use crate::py::error::{FrameSummary, PythonError, SourceLocation, StackSummary};
-use crate::rust_to_py::py_code_gen::PyMetaExecutable;
+use crate::rust_to_py::PY_GLOBAL_OBJS_ARRAY_NAME;
+use crate::rust_to_py::meta::stmt::ImportMetaStmt;
+use crate::rust_to_py::py_code_gen::{PyMetaExecutable, PyObj};
 use either::Either;
 use proc_macro2::TokenStream;
+use pyo3::IntoPyObjectExt;
 use pyo3::exceptions::PySyntaxError;
 use pyo3::ffi::c_str;
 use pyo3::prelude::*;
@@ -12,7 +15,6 @@ use pyo3::types::{PyCode, PyCodeInput, PyCodeMethods, PyDict, PyTraceback, PyTup
 use std::ffi::CString;
 use std::rc::Rc;
 use std::sync::OnceLock;
-use crate::rust_to_py::meta::stmt::ImportMetaStmt;
 
 macro_rules! include_cstr {
     ($path:expr) => {
@@ -54,7 +56,7 @@ fn initialize() {
 
             sys.getattr("modules")
                 .unwrap()
-                .set_item("pymeta._pymeta", pyo3::wrap_pymodule!(_pymeta)(py))
+                .set_item("pymeta._.native", pyo3::wrap_pymodule!(pymeta_native)(py))
                 .unwrap();
 
             {
@@ -70,8 +72,10 @@ fn initialize() {
                 let builtin_files = importer_files_dict!(py, pylib_path!(""), {
                     "pymeta" {
                         "__init__",
-                        "_internal",
-                        "pattern"
+                        "_" {
+                            "__init__",
+                            "module"
+                        }
                     }
                 });
                 let builtins_importer = PyMetaBuiltinsImporter
@@ -91,6 +95,8 @@ pub(crate) fn execute(exe: PyMetaExecutable) -> PyMetaExecutionResult {
     initialize();
 
     let result = Python::attach(|py| -> PyResult<TokenStream> {
+        let builtins = py.import("builtins").unwrap();
+
         // compile code
         let module = &exe.main;
         let mut source_code = module.source.source_code().into_bytes();
@@ -105,28 +111,33 @@ pub(crate) fn execute(exe: PyMetaExecutable) -> PyMetaExecutionResult {
 
         // register `pymeta_module`s
         let PyMetaModuleImporter = py
-            .import("pymeta._internal")
+            .import("pymeta._.module")
             .unwrap()
             .getattr("PyMetaModuleImporter")
             .unwrap();
-        PyMetaModuleImporter.call_method0("kill_all").expect("PyMetaModuleImporter.kill_all() failed");
-        let pymeta_module_importer = PyMetaModuleImporter.call1((ImportMetaStmt::PATH, {
-            let modules_dict = PyDict::new(py);
-            for module in &exe.modules {
-                modules_dict.set_item(&module.name, module.source.source_code()).unwrap();
-            }
-            modules_dict
-        })).expect("PyMetaModuleImporter() failed");
+        PyMetaModuleImporter
+            .call_method0("kill_all")
+            .expect("PyMetaModuleImporter.kill_all() failed");
+        let pymeta_module_importer = PyMetaModuleImporter
+            .call1((ImportMetaStmt::PATH, {
+                let modules_dict = PyDict::new(py);
+                for module in &exe.modules {
+                    modules_dict
+                        .set_item(&module.name, module.source.source_code())
+                        .unwrap();
+                }
+                modules_dict
+            }))
+            .expect("PyMetaModuleImporter() failed");
 
         // setup context
-        let context = PyDict::new(py);
-        context
-            .set_item(
-                "__spans",
-                PyTuple::new(py, exe.main.spans.iter().map(|span| _pymeta::PySpan(Rc::clone(span))))
-                    .expect("Failed to construct __spans tuple"),
+        builtins
+            .setattr(
+                PY_GLOBAL_OBJS_ARRAY_NAME,
+                PyTuple::new(py, exe.objs.iter()).expect("Failed to construct global objs array"),
             )
-            .expect("Failed to add __spans to context");
+            .unwrap();
+        let context = PyDict::new(py);
         let pymeta = py.import("pymeta").expect("Failed to import pymeta");
         let tokens = pymeta.call_method0("Tokens").expect("Failed to construct Tokens");
         tokens.call_method0("__enter__").expect("Tokens.__enter__() failed");
@@ -136,16 +147,18 @@ pub(crate) fn execute(exe: PyMetaExecutable) -> PyMetaExecutionResult {
         let result = code.run(Some(&context), None);
 
         // cleanup
-        pymeta_module_importer.call_method0("kill").expect("PyMetaModuleImporter.kill() failed");
+        pymeta_module_importer
+            .call_method0("kill")
+            .expect("PyMetaModuleImporter.kill() failed");
         tokens.call_method0("__exit__").expect("Tokens.__exit__() failed");
 
         result?;
 
         // extract result
-        let tokens: Bound<_pymeta::PyTokenStream> = tokens
+        let tokens: Bound<pymeta_native::PyTokenStream> = tokens
             .call_method0("_to_tokenstream")
             .expect("Tokens._to_tokenstream() failed")
-            .cast_into_exact::<_pymeta::PyTokenStream>()
+            .cast_into_exact::<pymeta_native::PyTokenStream>()
             .expect("Expected Tokens._to_tokenstream() to return a TokenStream");
 
         Ok(tokens.borrow_mut().0.take().unwrap())
@@ -236,8 +249,20 @@ pub(crate) fn execute(exe: PyMetaExecutable) -> PyMetaExecutionResult {
     PyMetaExecutionResult { exe, result }
 }
 
+impl<'py> IntoPyObject<'py> for &PyObj {
+    type Target = PyAny;
+    type Output = Bound<'py, Self::Target>;
+    type Error = PyErr;
+
+    fn into_pyobject(self, py: Python<'py>) -> Result<Self::Output, Self::Error> {
+        match self {
+            PyObj::Span(span) => Ok(pymeta_native::PySpan(Rc::clone(span)).into_bound_py_any(py)?),
+        }
+    }
+}
+
 #[pymodule]
-mod _pymeta {
+mod pymeta_native {
     use crate::utils::span::CSpan;
     use proc_macro2::{Delimiter, Group, Ident, Literal, Punct, Spacing, Span, TokenStream, TokenTree};
     use pyo3::exceptions::PyValueError;

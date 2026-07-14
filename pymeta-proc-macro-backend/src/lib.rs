@@ -2,7 +2,8 @@
 
 use crate::rust_to_py::code_region::parser::{CodeRegionParser, CodeRegionParserCtx, CodeRegionParserSettings};
 use crate::rust_to_py::meta::stmt::ImportMetaStmt;
-use crate::rust_to_py::py_code_gen::{PyCodeGen, PyMetaExecutable, PyMetaModule};
+use crate::rust_to_py::py_code_gen::{PyCodeGen, PyCodeGenContext, PyMetaExecutable, PyMetaModule};
+use crate::rust_to_py::utils::py_markers_to_py_marker_idents;
 use crate::utils::LiteralRawStringExt;
 use crate::utils::diagnostic::set_dummy_output;
 use crate::utils::parsing::{RustAttribute, RustSimplePath, RustVis};
@@ -13,7 +14,6 @@ use std::collections::HashMap;
 use std::iter::repeat_n;
 use std::rc::Rc;
 use utils::rust_token::TokenBuffer;
-use crate::rust_to_py::utils::py_markers_to_py_marker_idents;
 
 mod py;
 mod rust_to_py;
@@ -36,6 +36,7 @@ pub fn _pymeta_main(input: TokenStream) -> TokenStream {
     let mut main_module = None;
     #[allow(clippy::mutable_key_type)]
     let mut modules = HashMap::<Rc<RustSimplePath>, PyMetaModule>::new();
+    let mut codegen_ctx = PyCodeGenContext::new();
     while !input.exhausted() {
         match input
             .read_one()
@@ -54,6 +55,7 @@ pub fn _pymeta_main(input: TokenStream) -> TokenStream {
                     CodeRegionParser::new(CodeRegionParserSettings::default(), &mut CodeRegionParserCtx::new())
                         .parse(input.read_one().expect_group(Delimiter::Brace).unwrap().tokens())
                         .iter(),
+                    &mut codegen_ctx,
                 ));
             }
             "module" => {
@@ -83,6 +85,7 @@ pub fn _pymeta_main(input: TokenStream) -> TokenStream {
                         )
                         .parse(body)
                         .iter(),
+                        &mut codegen_ctx,
                     )
                 });
             }
@@ -93,10 +96,11 @@ pub fn _pymeta_main(input: TokenStream) -> TokenStream {
             ),
         }
     }
-    run_pymeta_executable(PyMetaExecutable {
-        main: Rc::new(main_module.expect("main module not given")),
-        modules: modules.into_values().map(Rc::new).collect(),
-    })
+    run_pymeta_executable(PyMetaExecutable::new(
+        Rc::new(main_module.expect("main module not given")),
+        modules.into_values().map(Rc::new).collect(),
+        codegen_ctx,
+    ))
 }
 
 /// TODO: detailed documentation will be available here,
@@ -118,17 +122,16 @@ pub fn pymeta(input: TokenStream) -> TokenStream {
         return wrap_with_import_pymeta_module_macro_calls(tokens, code_region_parser_ctx.import_paths.iter());
     }
 
+    let mut codegen_ctx = PyCodeGenContext::new();
     let main = PyCodeGen::gen_from_code_regions(
         None,
         MAIN_MODULE_NAME.into(),
         format_module_name(&Span::call_site().file(), MAIN_MODULE_NAME),
         code_regions.iter(),
+        &mut codegen_ctx,
     );
 
-    run_pymeta_executable(PyMetaExecutable {
-        main: Rc::new(main),
-        modules: [].into(),
-    })
+    run_pymeta_executable(PyMetaExecutable::new(Rc::new(main), [].into(), codegen_ctx))
 }
 
 pub fn pymeta_module(params: TokenStream, input: TokenStream) -> TokenStream {
