@@ -135,23 +135,28 @@ pub fn pymeta(input: TokenStream) -> TokenStream {
 }
 
 pub fn pymeta_module(params: TokenStream, input: TokenStream) -> TokenStream {
-    let mut params = TokenBuffer::from_iter(params);
+    if let Some(token) = params.into_iter().next() {
+        abort!(token.span(), "Unexpected parameters");
+    }
     let mut input = TokenBuffer::from_iter(input);
 
-    let vis = if !params.exhausted() {
-        Some(RustVis::try_parse(&mut params).unwrap_or_else(|e| e.abort()))
-    } else {
-        None
-    };
-
     // attributes
+    let mut vis = None;
     let mut macro_attrs = Vec::new();
     let mut reexport_attrs = Vec::new();
     while let Ok(attr) = RustAttribute::try_parse(&mut input) {
         let (apply_to_macro, apply_to_reexport) = match attr.path.to_string().as_str() {
+            "public" => {
+                if vis.is_some() {
+                    abort!(attr.path.total_span(), "duplicate vis specification");
+                }
+                let _ =
+                    vis.insert(RustVis::try_parse("public", &mut attr.group.tokens()).unwrap_or_else(|e| e.abort()));
+                continue;
+            }
             "macro_export" => abort!(
                 attr.path.total_span(),
-                "Explicit `#[macro_export]` not allowed, use `#[pymeta_module(pub)]` instead"
+                "Explicit `#[macro_export]` not allowed, use `#[public]` instead"
             ),
             "allow" | "expect" | "warn" | "deny" | "forbid" => (true, true),
             "deprecated" => (true, true),

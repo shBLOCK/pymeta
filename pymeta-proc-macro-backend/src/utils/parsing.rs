@@ -211,12 +211,17 @@ pub struct RustVis {
     pub params_group: Option<Rc<Group>>,
 }
 impl RustVis {
-    pub fn try_parse(tokens: &mut TokenBuffer) -> ParseResult<Self, &'static str> {
+    pub fn try_parse(kw_alias: &str, tokens: &mut TokenBuffer) -> ParseResult<Self, &'static str> {
         tokens.try_run_or_rewind(|tokens| {
             let pub_ident = tokens
                 .read_one()
-                .expect_ident("pub")
-                .map_err(|t| ParseError::new(t, "expected `pub`"))?;
+                .expect_ident(kw_alias)
+                .map_err(|t| ParseError::new(t, "expected vis keyword"))?;
+            let pub_ident = if kw_alias != "pub" {
+                Rc::new(proc_macro2::Ident::new("pub", pub_ident.span().inner()).into())
+            } else {
+                pub_ident
+            };
             let params_group = tokens.read_one().expect_group(Delimiter::Parenthesis).ok();
             Ok(Self { pub_ident, params_group })
         })
