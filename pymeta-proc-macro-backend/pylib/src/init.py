@@ -1,9 +1,9 @@
 import importlib
-from importlib.abc import InspectLoader, MetaPathFinder
+from importlib.abc import MetaPathFinder, ExecutionLoader
 import importlib.util
 
 
-class PyMetaBuiltinsImporter(MetaPathFinder, InspectLoader):
+class PyMetaBuiltinsImporter(MetaPathFinder, ExecutionLoader):
     def __init__(self, files: dict):
         self.files = files
     
@@ -20,14 +20,21 @@ class PyMetaBuiltinsImporter(MetaPathFinder, InspectLoader):
             return importlib.util.spec_from_loader(fullname, self)
         return None
 
-    def get_source(self, fullname):
+    def _get_source(self, fullname) -> tuple[str | None, str | None]:
+        path = "<pylib>/" + '/'.join(fullname.split('.'))
         match self.get_dir_or_file(fullname):
             case str(src):
-                return src
+                return f"{path}.py", src
             case {"__init__": str(src)}:
-                return src
-        return None
+                return f"{path}/__init__.py", src
+        return None, None
 
+    def get_filename(self, fullname):
+        return self._get_source(fullname)[0]
+
+    def get_source(self, fullname):
+        return self._get_source(fullname)[1]
+    
     def is_package(self, fullname):
         match self.get_dir_or_file(fullname):
             case {"__init__": str(_)}:
