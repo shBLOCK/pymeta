@@ -147,6 +147,7 @@ pub(crate) fn execute(exe: PyMetaExecutable) -> PyMetaExecutionResult {
         let result = code.run(Some(&context), None);
 
         // cleanup
+        builtins.delattr(PY_GLOBAL_OBJS_ARRAY_NAME).unwrap();
         pymeta_module_importer
             .call_method0("kill")
             .expect("PyMetaModuleImporter.kill() failed");
