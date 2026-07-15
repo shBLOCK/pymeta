@@ -1,9 +1,10 @@
+pub mod diagnostic;
 pub(crate) mod escape;
+pub(crate) mod indent;
 pub(crate) mod parse_buffer;
 pub(crate) mod parsing;
 pub(crate) mod rust_token;
 pub(crate) mod span;
-pub mod diagnostic;
 
 macro_rules! match_unwrap {
     ($var:ident in $pattern:pat = $expr:expr) => {{
@@ -13,9 +14,9 @@ macro_rules! match_unwrap {
 }
 
 pub(crate) use match_unwrap;
+use proc_macro2::{Span, TokenStream};
 use std::cmp::max;
 use std::str::FromStr;
-
 // #[cfg(feature = "nightly_proc_macro_span")]
 // #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 // pub(crate) struct LineColumn {
@@ -24,7 +25,7 @@ use std::str::FromStr;
 //     /// 0-indexed
 //     pub column: u32,
 // }
-// 
+//
 // #[cfg(feature = "nightly_proc_macro_span")]
 // impl From<proc_macro2::LineColumn> for LineColumn {
 //     fn from(value: proc_macro2::LineColumn) -> Self {
@@ -34,7 +35,7 @@ use std::str::FromStr;
 //         }
 //     }
 // }
-// 
+//
 // #[cfg(feature = "nightly_proc_macro_span")]
 // impl From<LineColumn> for proc_macro2::LineColumn {
 //     fn from(value: LineColumn) -> Self {
@@ -106,5 +107,38 @@ impl LiteralRawStringExt for proc_macro2::Literal {
         let string = self.to_string();
         let string = string.trim_start_matches('r').trim_matches('#');
         String::from(&string[1..string.len() - 1])
+    }
+}
+
+pub(crate) trait IteratorFirstAndLast<I: Clone>: Iterator<Item = I> {
+    fn first_and_last(&mut self) -> Option<(I, I)>;
+}
+impl<I: Clone, T> IteratorFirstAndLast<I> for T
+where
+    T: Iterator<Item = I>,
+{
+    fn first_and_last(&mut self) -> Option<(I, I)> {
+        let first = self.next()?;
+        let last = self.last().unwrap_or_else(|| first.clone());
+        Some((first, last))
+    }
+}
+
+pub(crate) trait TokenStreamExt {
+    fn full_span(self) -> Option<Span>;
+    fn source_text(self) -> String;
+}
+impl TokenStreamExt for TokenStream {
+    fn full_span(self) -> Option<Span> {
+        if let Some((first, last)) = self.into_iter().first_and_last() {
+            first.span().join(last.span())
+        } else {
+            None
+        }
+    }
+
+    fn source_text(self) -> String {
+        let Some(span) = self.clone().full_span() else { return "".into() };
+        span.source_text().unwrap_or_else(|| self.to_string())
     }
 }

@@ -1,3 +1,4 @@
+import contextlib
 import weakref
 from abc import ABC, abstractmethod
 from collections import deque
@@ -74,7 +75,16 @@ class Tokens(MutableSequence[Token]):
 
     @classmethod
     def _current_ctx(cls) -> Tokens:
+        if not cls._CTX_STACK or cls._CTX_STACK[-1] is None:
+            raise RuntimeError(f"No active {cls.__name__} context.")
         return cls._CTX_STACK[-1]
+
+    @classmethod
+    @contextlib.contextmanager
+    def _none_ctx(cls):
+        cls._CTX_STACK.append(None)
+        yield
+        assert cls._CTX_STACK.pop() is None
 
     @staticmethod
     def _coerce(items: Iterable[CoerceToTokens], *, span: Span | None = None, out: list[Token] | None = None) -> list[

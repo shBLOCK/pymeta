@@ -21,3 +21,10 @@ pub fn pymeta_module(params: proc_macro::TokenStream, input: proc_macro::TokenSt
         .resolve_to_tokens()
         .into()
 }
+
+#[proc_macro_attribute]
+pub fn pymeta_func(params: proc_macro::TokenStream, input: proc_macro::TokenStream) -> proc_macro::TokenStream {
+    run_proc_macro(|| backend::pymeta_func(params.into(), input.into()))
+        .resolve_to_tokens()
+        .into()
+}

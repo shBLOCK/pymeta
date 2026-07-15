@@ -1,17 +1,18 @@
 #![cfg_attr(feature = "nightly_diagnostic", feature(proc_macro_diagnostic))]
 
+use crate::rust_to_py::PY_MARKER_IDENT;
 use crate::rust_to_py::code_region::parser::{CodeRegionParser, CodeRegionParserCtx, CodeRegionParserSettings};
 use crate::rust_to_py::meta::stmt::ImportMetaStmt;
 use crate::rust_to_py::py_code_gen::{PyCodeGen, PyCodeGenContext, PyMetaExecutable, PyMetaModule};
 use crate::rust_to_py::utils::py_markers_to_py_marker_idents;
-use crate::utils::LiteralRawStringExt;
 use crate::utils::diagnostic::set_dummy_output;
-use crate::utils::parsing::{RustAttribute, RustSimplePath, RustVis};
+use crate::utils::indent::{IndentedLine, IndentedLineIterExt};
+use crate::utils::parsing::{RustAttribute, RustSimpleMacroCall, RustSimplePath, RustVis};
 use crate::utils::rust_token::TokenOptionEx;
+use crate::utils::{LiteralRawStringExt, TokenStreamExt as _};
 use proc_macro2::{Delimiter, Group, Ident, Literal, Span, TokenStream, TokenTree};
-use quote::{TokenStreamExt, quote};
+use quote::quote;
 use std::collections::HashMap;
-use std::iter::repeat_n;
 use std::rc::Rc;
 use utils::rust_token::TokenBuffer;
 
@@ -134,67 +135,92 @@ pub fn pymeta(input: TokenStream) -> TokenStream {
     run_pymeta_executable(PyMetaExecutable::new(Rc::new(main), [].into(), codegen_ctx))
 }
 
+struct VisAndSeparatedAttrs {
+    vis: RustVis,
+    macro_attrs: Vec<TokenStream>,
+    reexport_attrs: Vec<TokenStream>,
+}
+impl VisAndSeparatedAttrs {
+    fn from_macro_call_attrs<'a>(attrs: impl Iterator<Item = &'a RustAttribute>) -> Self {
+        let mut vis = None;
+        let mut macro_attrs = Vec::new();
+        let mut reexport_attrs = Vec::new();
+
+        const PUB_KW_ALIAS: &str = "public";
+
+        for attr in attrs {
+            let (apply_to_macro, apply_to_reexport) = match attr.path.to_string().as_str() {
+                PUB_KW_ALIAS => {
+                    if vis.is_some() {
+                        abort!(attr.path.total_span(), "duplicate vis specification");
+                    }
+                    let _ = vis.insert(
+                        RustVis::try_parse(PUB_KW_ALIAS, &mut attr.group.tokens()).unwrap_or_else(|e| e.abort()),
+                    );
+                    continue;
+                }
+                "macro_export" => abort!(
+                    attr.path.total_span(),
+                    "Explicit `#[macro_export]` not allowed, use `#[public]` instead"
+                ),
+                "allow" | "expect" | "warn" | "deny" | "forbid" => (true, true),
+                "deprecated" => (true, true),
+                "doc" => (false, true),
+                _ => (true, false),
+            };
+            if apply_to_macro {
+                macro_attrs.push(attr.group.inner().stream());
+            }
+            if apply_to_reexport {
+                reexport_attrs.push(attr.group.inner().stream());
+            }
+        }
+        // default: pub(self)
+        let vis = vis.unwrap_or_else(|| RustVis {
+            pub_ident: Rc::new(Ident::new("pub", Span::call_site()).into()),
+            params_group: Some(Rc::new(
+                Group::new(
+                    Delimiter::Parenthesis,
+                    TokenTree::Ident(Ident::new("self", Span::call_site())).into(),
+                )
+                .into(),
+            )),
+        });
+        if vis.is_pub() {
+            macro_attrs.push(quote! { macro_export });
+        }
+
+        Self { vis, macro_attrs, reexport_attrs }
+    }
+}
+
+fn strip_common_indent(source: &str) -> String {
+    let lines = source.lines().map(IndentedLine::from).collect::<Box<_>>();
+    let common_indent = lines.iter().skip(1).copied().common_indent() as isize;
+    lines.iter().copied().indented(-common_indent).collect::<String>()
+}
+
 pub fn pymeta_module(params: TokenStream, input: TokenStream) -> TokenStream {
     if let Some(token) = params.into_iter().next() {
         abort!(token.span(), "Unexpected parameters");
     }
     let mut input = TokenBuffer::from_iter(input);
 
+    let macro_call = RustSimpleMacroCall::try_parse(&mut input).unwrap_or_else(|e| e.abort());
+
     // attributes
-    let mut vis = None;
-    let mut macro_attrs = Vec::new();
-    let mut reexport_attrs = Vec::new();
-    while let Ok(attr) = RustAttribute::try_parse(&mut input) {
-        let (apply_to_macro, apply_to_reexport) = match attr.path.to_string().as_str() {
-            "public" => {
-                if vis.is_some() {
-                    abort!(attr.path.total_span(), "duplicate vis specification");
-                }
-                let _ =
-                    vis.insert(RustVis::try_parse("public", &mut attr.group.tokens()).unwrap_or_else(|e| e.abort()));
-                continue;
-            }
-            "macro_export" => abort!(
-                attr.path.total_span(),
-                "Explicit `#[macro_export]` not allowed, use `#[public]` instead"
-            ),
-            "allow" | "expect" | "warn" | "deny" | "forbid" => (true, true),
-            "deprecated" => (true, true),
-            "doc" => (false, true),
-            _ => (true, false),
-        };
-        if apply_to_macro {
-            macro_attrs.push(attr.group.inner().stream());
-        }
-        if apply_to_reexport {
-            reexport_attrs.push(attr.group.inner().stream());
-        }
-    }
-    if let Some(ref vis) = vis
-        && vis.is_pub()
-    {
-        macro_attrs.push(quote! { macro_export });
-    }
+    let VisAndSeparatedAttrs { vis, macro_attrs, mut reexport_attrs } =
+        VisAndSeparatedAttrs::from_macro_call_attrs(macro_call.attributes.iter());
 
     // names
-    let Ok(name_ident) = input.read_one().ident() else {
-        abort!(
-            input.get_current_span_for_diagnostics(),
-            "Expected module name identifier"
-        );
-    };
-    if !input.read_one().eq_punct('!') {
-        abort!(input.get_current_span_for_diagnostics(), "Expected `!`");
-    }
+    let name_ident = macro_call.ident;
     let name = name_ident.inner().to_string();
     let mangled_name_ident = Ident::new(&format!("{PYMETA_MODULE_PREFIX}{name}"), name_ident.span().inner());
     let file = Span::call_site().file();
     let file_literal = Literal::raw_string(&file);
 
     // body
-    let Ok(body_group) = input.read_one().expect_group(Delimiter::Brace) else {
-        abort!(input.get_current_span_for_diagnostics(), "Expected `{<module body>}`");
-    };
+    let body_group = macro_call.body_group;
     let mut code_region_parser_ctx = CodeRegionParserCtx::new();
     CodeRegionParser::new(
         CodeRegionParserSettings { pure_python_mode: true },
@@ -204,48 +230,9 @@ pub fn pymeta_module(params: TokenStream, input: TokenStream) -> TokenStream {
     let body = py_markers_to_py_marker_idents(body_group.inner().stream());
     {
         // source doc
-        let body_tokens = body_group.inner().stream().into_iter().collect::<Vec<_>>();
-        let source = if let (Some(first), Some(last)) = (body_tokens.first(), body_tokens.last()) {
-            first
-                .span()
-                .join(last.span())
-                .and_then(|s| s.source_text())
-                .map(|source| {
-                    // strip common indent
-                    let lines = source
-                        .lines()
-                        .map(|mut line| {
-                            let mut indent: usize = 0;
-                            while !line.is_empty() {
-                                let space_size = match line.as_bytes()[0] {
-                                    b' ' => 1,
-                                    b'\t' => 4,
-                                    _ => break,
-                                };
-                                indent += space_size;
-                                line = &line[1..];
-                            }
-                            (indent, line)
-                        })
-                        .collect::<Vec<_>>();
-                    let common_indent = lines.iter().map(|(indent, _)| *indent).skip(1).min().unwrap_or(0);
-
-                    let mut result = String::new();
-                    for (indent, line) in lines {
-                        let indent = indent.saturating_sub(common_indent);
-                        result.extend(repeat_n(' ', indent));
-                        result.push_str(line);
-                        result.push('\n');
-                    }
-                    result
-                })
-        } else {
-            None
-        };
-        let source = source.unwrap_or(body_group.inner().stream().to_string());
+        let source = strip_common_indent(&body_group.inner().stream().source_text());
         let source_doc = Literal::raw_string(
-            format!("\n\n[pymeta_module][::pymeta::pymeta_module] `{name}` definition\n---\n```\n{source}\n```")
-                .as_str(),
+            format!("\n\n[pymeta_module][::pymeta::pymeta_module] `{name}`\n---\n```\n{source}\n```").as_str(),
         );
         reexport_attrs.push(quote! { doc = #source_doc });
     }
@@ -253,11 +240,58 @@ pub fn pymeta_module(params: TokenStream, input: TokenStream) -> TokenStream {
     // output
     let tokens = quote! {
         ::pymeta::__make_module_macro! {
-            $,
-            #name_ident #mangled_name_ident #file_literal,
-            #vis,
+            $ #name_ident #mangled_name_ident #vis,
             [#(#macro_attrs),*] [#(#reexport_attrs),*],
-            { #body },
+            #file_literal { #body },
+        }
+    };
+    wrap_with_import_pymeta_module_macro_calls(tokens, code_region_parser_ctx.import_paths.iter())
+}
+
+pub fn pymeta_func(params: TokenStream, input: TokenStream) -> TokenStream {
+    let mut input = TokenBuffer::from_iter(input);
+
+    let macro_call = RustSimpleMacroCall::try_parse(&mut input).unwrap_or_else(|e| e.abort());
+
+    // attributes
+    let VisAndSeparatedAttrs { vis, macro_attrs, mut reexport_attrs } =
+        VisAndSeparatedAttrs::from_macro_call_attrs(macro_call.attributes.iter());
+
+    // names
+    let name_ident = macro_call.ident;
+    let name = name_ident.inner().to_string();
+    let mangled_name_ident = Ident::new(&format!("{PYMETA_MODULE_PREFIX}{name}"), name_ident.span().inner());
+
+    // body
+    let body_group = macro_call.body_group;
+    let mut code_region_parser_ctx = CodeRegionParserCtx::new();
+    CodeRegionParser::new(
+        CodeRegionParserSettings { pure_python_mode: true },
+        &mut code_region_parser_ctx,
+    )
+    .parse(body_group.tokens());
+    let func_body = py_markers_to_py_marker_idents(body_group.inner().stream());
+    {
+        // source doc
+        let source = strip_common_indent(&body_group.inner().stream().source_text());
+        let params_src = params.clone().source_text();
+        let source_doc = Literal::raw_string(
+            format!("\n\n[pymeta_func][::pymeta::pymeta_func] `{name}({params_src})`\n---\n```\n{source}\n```")
+                .as_str(),
+        );
+        reexport_attrs.push(quote! { doc = #source_doc });
+    }
+
+    let param_list = py_markers_to_py_marker_idents(params);
+
+    let py_marker_ident = Ident::new(PY_MARKER_IDENT, Span::call_site());
+
+    // output
+    let tokens = quote! {
+        ::pymeta::__make_func_macro! {
+            $ #py_marker_ident #name_ident #mangled_name_ident #vis,
+            [#(#macro_attrs),*] [#(#reexport_attrs),*],
+            ( #param_list ) { #func_body },
         }
     };
     wrap_with_import_pymeta_module_macro_calls(tokens, code_region_parser_ctx.import_paths.iter())

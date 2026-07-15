@@ -237,3 +237,38 @@ impl ToTokens for RustVis {
         self.params_group.to_tokens(tokens);
     }
 }
+
+pub struct RustSimpleMacroCall {
+    pub attributes: Box<[RustAttribute]>,
+    pub ident: Rc<Ident>,
+    pub _exclamation_punct: Rc<Punct>,
+    pub body_group: Rc<Group>,
+}
+impl RustSimpleMacroCall {
+    pub fn try_parse(tokens: &mut TokenBuffer) -> ParseResult<Self, &'static str> {
+        tokens.try_run_or_rewind(|tokens| {
+            let mut attributes = Vec::new();
+            while let Ok(attr) = RustAttribute::try_parse(tokens) {
+                attributes.push(attr);
+            }
+            let ident = tokens
+                .read_one()
+                .ident()
+                .map_err(|t| ParseError::new(t, "expected macro name identifier"))?;
+            let exclamation_punct = tokens
+                .read_one()
+                .expect_punct('!')
+                .map_err(|t| ParseError::new(t, "expected `!`"))?;
+            let group = tokens
+                .read_one()
+                .expect_group(Delimiter::Brace)
+                .map_err(|t| ParseError::new(t, "expected `{...}`"))?;
+            Ok(Self {
+                attributes: attributes.into(),
+                ident,
+                _exclamation_punct: exclamation_punct,
+                body_group: group,
+            })
+        })
+    }
+}

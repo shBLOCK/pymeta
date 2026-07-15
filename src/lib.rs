@@ -1,6 +1,6 @@
 #![doc = include_str!("../README.md")]
 
-pub use pymeta_proc_macro::{pymeta, pymeta_module};
+pub use pymeta_proc_macro::{pymeta, pymeta_module, pymeta_func};
 
 #[doc(hidden)]
 pub mod __internal {
@@ -10,11 +10,9 @@ pub mod __internal {
     #[macro_export]
     macro_rules! __make_module_macro {
         {
-            $d:tt,
-            $name:ident $mangled_name:ident $file:literal,
-            $vis:vis,
+            $d:tt $name:ident $mangled_name:ident $vis:vis,
             [$($macro_attrs:meta),*] [$($reexport_attrs:meta),*],
-            { $($content:tt)* },
+            $file:literal { $($content:tt)* },
             $($extra:tt)*
         } => {
             $(#[$macro_attrs])*
@@ -35,19 +33,38 @@ pub mod __internal {
             $vis use $mangled_name as $name;
         };
     }
-
-    // #[doc(hidden)]
-    // #[macro_export]
-    // macro_rules! __make_pymacro_macro {
-    //     { $d:tt $name:ident $($body:tt)* } => {
-    //         macro_rules! $name {
-    //             ($d($d tokens:tt)*) => {
-    //                 $crate::__internal::_pymeta_main {
-    //                     $($body)*
-    //                     "macro_input" { $d($d tokens)* }
-    //                 }
-    //             };
-    //         }
-    //     }
-    // }
+    
+    #[doc(hidden)]
+    #[macro_export]
+    macro_rules! __make_func_macro {
+        {
+            $d:tt $py:ident $name:ident $mangled_name:ident $vis:vis,
+            [$($macro_attrs:meta),*] [$($reexport_attrs:meta),*],
+            ( $($param_list:tt)* ) { $($func_body:tt)* },
+            $($extra:tt)*
+        } => {
+            $(#[$macro_attrs])*
+            #[doc(hidden)]
+            macro_rules! $mangled_name {
+                ($d($d params:tt)*) => {
+                    ::pymeta::__internal::_pymeta_main! {
+                        main {
+                            $py with Tokens._none_ctx():{
+                                $py def $name($($param_list)*):$py{
+                                    $($func_body)*
+                                }
+                                $py result = $name($d($d params)*);
+                            }
+                            $py emit(result);
+                        }
+                        $($extra)*
+                    }
+                };
+            }
+            
+            $(#[$reexport_attrs])*
+            #[doc(inline)] // crate private reexports are not documented currently: https://github.com/rust-lang/rust/issues/159109
+            $vis use $mangled_name as $name;
+        };
+    }
 }
