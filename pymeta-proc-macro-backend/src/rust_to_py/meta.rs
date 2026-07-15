@@ -38,7 +38,6 @@ pub(crate) mod stmt {
         pub fn codegen(&self, pcg: &mut PyCodeGen) {
             match &self.body {
                 MetaStmtBody::Import(body) => body.codegen(self, pcg),
-                _ => todo!(),
             }
         }
     }
@@ -46,7 +45,6 @@ pub(crate) mod stmt {
     #[derive(Debug)]
     pub enum MetaStmtBody {
         Import(ImportMetaStmt),
-        Cfg(), //TODO
     }
 
     #[derive(Debug)]
@@ -223,18 +221,20 @@ pub(crate) mod stmt {
     }
 }
 
+#[allow(unused)] // tmp
 pub(crate) mod expr {
     use crate::utils::rust_token::TokenOptionEx;
     use crate::utils::rust_token::{Group, Ident, Punct, TokenBuffer};
     use proc_macro2::Delimiter;
     use std::rc::Rc;
+    use crate::abort;
 
     #[derive(Debug)]
     pub struct MetaExpr {
         pub _ident: Rc<Ident>,
         pub _exclamation: Rc<Punct>,
         pub _group: Rc<Group>,
-        pub body: MetaExprBody,
+        pub _body: MetaExprBody,
     }
 
     impl MetaExpr {
@@ -243,40 +243,33 @@ pub(crate) mod expr {
                 let ident = tokens.read_one().ident().ok()?;
                 let exclamation = tokens.read_one().expect_punct('!').ok()?;
                 let group = tokens.read_one().expect_group_by(|delim| delim != Delimiter::None).ok()?;
-                let body = MetaExprBody::parse(ident.inner().to_string().as_str(), &group)?;
+                let body = MetaExprBody::parse(&ident, &group);
                 Some(Self {
                     _ident: ident,
                     _exclamation: exclamation,
                     _group: group,
-                    body,
+                    _body: body,
                 })
             })
         }
-
-        // pub fn codegen(pcg: &mut PyCodeGen) {
-        //
-        // }
     }
 
     #[derive(Debug)]
     pub enum MetaExprBody {
-        // Quote(QuoteMetaExpr),
         // Pattern(PatternMetaExpr),
     }
 
     impl MetaExprBody {
-        fn parse(ident: &str, group: &Rc<Group>) -> Option<MetaExprBody> {
-            match ident {
-                "quote" => todo!(),
-                "pattern" => todo!(),
-                _ => None,
-            }
+        fn parse(ident: &Rc<Ident>, group: &Rc<Group>) -> MetaExprBody {
+            let _ = group;
+            abort!(ident.span(), "Meta expressions are not yet implemented");
+            // match ident.inner().to_string().as_str() {
+            //     "pattern" => ,
+            //     ident => abort!(ident.span(), "Unknown meta expression: {}", ident),
+            // }
         }
     }
 
-    #[derive(Debug)]
-    pub struct QuoteMetaExpr {}
-
-    #[derive(Debug)]
-    pub struct PatternMetaExpr {}
+    // #[derive(Debug)]
+    // pub struct QuoteMetaExpr {}
 }

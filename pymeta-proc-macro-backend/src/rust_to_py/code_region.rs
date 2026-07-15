@@ -255,6 +255,7 @@ pub(crate) mod parser {
             }
 
             if let Some(meta_stmt) = MetaStmt::try_parse(tokens) {
+                #[allow(irrefutable_let_patterns)]
                 if let MetaStmtBody::Import(ImportMetaStmt { path, .. }) = &meta_stmt.body {
                     if !self.ctx.import_paths.contains(path) {
                         self.ctx.import_paths.push(path.clone());

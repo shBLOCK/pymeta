@@ -229,8 +229,8 @@ impl PyCodeGen<'_> {
                     ));
                 }
                 PySegment::MetaExpr(meta_expr) => {
-                    // meta_expr.codegen(self);
-                    todo!()
+                    let _ = meta_expr;
+                    unreachable!("not yet implemented");
                 }
                 PySegment::Quote { outer_group, content, .. } => {
                     let span = outer_group.span();
