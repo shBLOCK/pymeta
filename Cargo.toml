@@ -38,8 +38,10 @@ pymeta-proc-macro = { path = "pymeta-proc-macro" }
 proc-macro2 = { version = "1.0.106", features = ["span-locations"] }
 
 [features]
+default = ["linux_force_load_python_lib"]
 nightly_diagnostic = ["pymeta-proc-macro/nightly_diagnostic"]
 dump_source_on_error = ["pymeta-proc-macro/dump_source_on_error"]
+linux_force_load_python_lib = ["pymeta-proc-macro/linux_force_load_python_lib"]
 
 [profile.dev]
 debug = "line-tables-only"
