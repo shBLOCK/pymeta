@@ -1,5 +1,5 @@
 use pymeta_proc_macro_backend as backend;
-use pymeta_proc_macro_backend::utils::diagnostic::run_proc_macro;
+use pymeta_proc_macro_backend::run_proc_macro;
 
 #[proc_macro]
 pub fn _pymeta_main(input: proc_macro::TokenStream) -> proc_macro::TokenStream {

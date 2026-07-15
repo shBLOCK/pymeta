@@ -12,8 +12,7 @@ include = ["/pylib"]
 
 [dependencies]
 proc-macro2 = { workspace = true }
-
-quote = "1.0.46"
+quote = { workspace = true }
 
 #rustpython-vm = { git = "https://github.com/RustPython/RustPython.git", tag = "2025-11-10-main-55" }
 pyo3 = { version = "0.29.0" }

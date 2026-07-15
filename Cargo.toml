@@ -36,6 +36,7 @@ pymeta-proc-macro = { path = "pymeta-proc-macro" }
 
 [workspace.dependencies]
 proc-macro2 = { version = "1.0.106", features = ["span-locations"] }
+quote = "1.0.46"
 
 [features]
 default = ["linux_force_load_python_lib"]
@@ -53,6 +54,11 @@ debug = false
 inherits = "dev"
 debug = true
 
+[dev-dependencies]
+pymeta-proc-macro-backend = { path = "pymeta-proc-macro-backend" }
+proc-macro2 = { workspace = true }
+quote = { workspace = true }
+pretty_assertions = "1.4.1"
 
 [workspace.lints.clippy]
 unwrap_or_default = "allow"

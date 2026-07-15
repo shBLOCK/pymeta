@@ -19,6 +19,8 @@ mod py;
 mod rust_to_py;
 pub mod utils;
 
+pub use crate::utils::diagnostic::run_proc_macro;
+
 const MAIN_MODULE_NAME: &str = "__main__";
 
 fn format_module_name(file: &str, name: &str) -> String {
