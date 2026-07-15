@@ -44,7 +44,7 @@ where
 }
 
 impl<'a> Extend<IndentedLine<'a>> for String {
-    fn extend<T: IntoIterator<Item=IndentedLine<'a>>>(&mut self, iter: T) {
+    fn extend<T: IntoIterator<Item = IndentedLine<'a>>>(&mut self, iter: T) {
         for line in iter.into_iter() {
             self.extend(repeat_n(' ', line.indent));
             self.push_str(line.text);
@@ -54,7 +54,7 @@ impl<'a> Extend<IndentedLine<'a>> for String {
 }
 
 impl<'a> FromIterator<IndentedLine<'a>> for String {
-    fn from_iter<T: IntoIterator<Item=IndentedLine<'a>>>(iter: T) -> Self {
+    fn from_iter<T: IntoIterator<Item = IndentedLine<'a>>>(iter: T) -> Self {
         let mut string = String::new();
         string.extend(iter);
         string

@@ -138,7 +138,9 @@ impl TokenStreamExt for TokenStream {
     }
 
     fn source_text(self) -> String {
-        let Some(span) = self.clone().full_span() else { return "".into() };
+        let Some(span) = self.clone().full_span() else {
+            return "".into();
+        };
         span.source_text().unwrap_or_else(|| self.to_string())
     }
 }

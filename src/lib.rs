@@ -1,6 +1,6 @@
 #![doc = include_str!("../README.md")]
 
-pub use pymeta_proc_macro::{pymeta, pymeta_module, pymeta_func};
+pub use pymeta_proc_macro::{pymeta, pymeta_func, pymeta_module};
 
 #[doc(hidden)]
 pub mod __internal {
@@ -27,13 +27,13 @@ pub mod __internal {
                     }
                 }
             }
-            
+
             $(#[$reexport_attrs])*
             #[doc(inline)] // crate private reexports are not documented currently: https://github.com/rust-lang/rust/issues/159109
             $vis use $mangled_name as $name;
         };
     }
-    
+
     #[doc(hidden)]
     #[macro_export]
     macro_rules! __make_func_macro {
@@ -61,7 +61,7 @@ pub mod __internal {
                     }
                 };
             }
-            
+
             $(#[$reexport_attrs])*
             #[doc(inline)] // crate private reexports are not documented currently: https://github.com/rust-lang/rust/issues/159109
             $vis use $mangled_name as $name;

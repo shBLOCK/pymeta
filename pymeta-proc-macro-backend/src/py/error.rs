@@ -1,6 +1,7 @@
+use crate::rust_to_py::PY_MARKER;
 use crate::rust_to_py::py_code_gen::PyMetaModule;
 use crate::rust_to_py::py_source::PySrcSegment;
-use crate::rust_to_py::PY_MARKER;
+use crate::utils::diagnostic::{Diagnostic, DiagnosticLevel};
 use crate::utils::span::SpanEx;
 use either::Either;
 use proc_macro2::Span;
@@ -8,7 +9,6 @@ use std::cell::OnceCell;
 use std::fmt::Write;
 use std::ops::Deref;
 use std::rc::Rc;
-use crate::utils::diagnostic::{Diagnostic, DiagnosticLevel};
 
 #[derive(Debug)]
 pub(crate) struct SourceLocation {
@@ -175,10 +175,13 @@ impl PythonError {
                                 stack_iter.next().unwrap();
                             }
                             let not_shown_repeats = repeating_frames + 1 - REPEAT_CUTOFF;
-                            diagnostic = diagnostic.add_note(None, format!(
-                                "|  [Previous line repeated {not_shown_repeats} more time{}]",
-                                if not_shown_repeats > 1 { "s" } else { "" }
-                            ));
+                            diagnostic = diagnostic.add_note(
+                                None,
+                                format!(
+                                    "|  [Previous line repeated {not_shown_repeats} more time{}]",
+                                    if not_shown_repeats > 1 { "s" } else { "" }
+                                ),
+                            );
                             continue;
                         }
                     } else {

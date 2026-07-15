@@ -223,11 +223,11 @@ pub(crate) mod stmt {
 
 #[allow(unused)] // tmp
 pub(crate) mod expr {
+    use crate::abort;
     use crate::utils::rust_token::TokenOptionEx;
     use crate::utils::rust_token::{Group, Ident, Punct, TokenBuffer};
     use proc_macro2::Delimiter;
     use std::rc::Rc;
-    use crate::abort;
 
     #[derive(Debug)]
     pub struct MetaExpr {
@@ -242,7 +242,10 @@ pub(crate) mod expr {
             tokens.try_run_or_rewind(|tokens| {
                 let ident = tokens.read_one().ident().ok()?;
                 let exclamation = tokens.read_one().expect_punct('!').ok()?;
-                let group = tokens.read_one().expect_group_by(|delim| delim != Delimiter::None).ok()?;
+                let group = tokens
+                    .read_one()
+                    .expect_group_by(|delim| delim != Delimiter::None)
+                    .ok()?;
                 let body = MetaExprBody::parse(&ident, &group);
                 Some(Self {
                     _ident: ident,

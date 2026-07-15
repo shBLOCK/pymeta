@@ -41,7 +41,7 @@ impl<T> ParseBuffer<T> {
     pub fn peek(&self, offset: isize) -> Option<&T> {
         self.items.get(self.pos.checked_add_signed(offset)?)
     }
-    
+
     pub fn pos(&self) -> usize {
         self.pos
     }
@@ -80,15 +80,12 @@ impl<T> Clone for ParseBuffer<T> {
 
 impl<T> From<Rc<[T]>> for ParseBuffer<T> {
     fn from(value: Rc<[T]>) -> Self {
-        Self {
-            items: value,
-            pos: 0,
-        }
+        Self { items: value, pos: 0 }
     }
-} 
+}
 
 impl<T> FromIterator<T> for ParseBuffer<T> {
-    fn from_iter<Iter: IntoIterator<Item=T>>(iter: Iter) -> Self {
+    fn from_iter<Iter: IntoIterator<Item = T>>(iter: Iter) -> Self {
         Self::from(Rc::from_iter(iter))
     }
 }
