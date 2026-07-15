@@ -158,6 +158,7 @@ pub(crate) mod parser {
     pub(crate) struct CodeRegionParserSettings {
         pub pure_python_mode: bool,
     }
+    #[allow(clippy::derivable_impls)]
     impl Default for CodeRegionParserSettings {
         fn default() -> Self {
             Self { pure_python_mode: false }

@@ -32,6 +32,7 @@ pub(crate) struct PyMetaModule {
 
 impl PyMetaModule {
     //TODO: allow Python-side reflection into the PyMeta executable, and do user-controlled source dump from there
+    #[allow(unused)]
     pub fn emit_source_dump(&self) {
         Diagnostic::new(
             Span::call_site(), // TODO: refer to actual span for non-main module

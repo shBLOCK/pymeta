@@ -72,10 +72,10 @@ impl<T> ResultOrOption<T, ()> for Option<T> {
     }
 }
 
-fn longest_true_chain(mut iter: impl Iterator<Item = bool>) -> usize {
+fn longest_true_chain(iter: impl Iterator<Item = bool>) -> usize {
     let mut max_value = 0;
     let mut current = 0;
-    while let Some(value) = iter.next() {
+    for value in iter {
         if value {
             current += 1;
         } else {

@@ -132,7 +132,6 @@ impl RustSimplePath {
 }
 
 impl PartialEq for RustSimplePath {
-    #[allow(clippy::cmp_owned)]
     fn eq(&self, other: &Self) -> bool {
         self.is_root() == other.is_root()
             && self.segments.len() == other.segments.len()
@@ -140,7 +139,7 @@ impl PartialEq for RustSimplePath {
                 .segments
                 .iter()
                 .zip(other.segments.iter())
-                .all(|(a, b)| a.inner().to_string() == b.inner().to_string())
+                .all(|(a, b)| *a.inner() == *b.inner())
     }
 }
 

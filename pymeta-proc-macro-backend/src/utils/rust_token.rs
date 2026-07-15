@@ -34,7 +34,7 @@ pub(crate) struct Group {
 #[allow(unused)]
 impl Ident {
     pub fn eq_ident<'a>(&self, ident: impl Into<&'a str>) -> bool {
-        self.ident.to_string() == ident.into()
+        self.ident == ident.into()
     }
 }
 

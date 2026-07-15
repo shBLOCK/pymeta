@@ -7,6 +7,7 @@ mod error;
 pub(crate) mod impl_pyo3;
 pub(crate) mod impl_rustpython;
 
+#[allow(unused)]
 pub(crate) struct PyMetaExecutionResult {
     pub exe: PyMetaExecutable,
     pub result: Result<TokenStream, PythonError>,
