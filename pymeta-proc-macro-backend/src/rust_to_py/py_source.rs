@@ -162,6 +162,12 @@ pub(crate) mod builder {
             self.content.push(Either::Right(Rc::clone(&block)));
             block
         }
+
+        fn insert_before_current_line(&mut self, builder: PySourceBuilder) {
+            for item in builder.unwrap_root_indent_block().content.into_iter() {
+                self.content.insert(self.content.len() - 1, item);
+            }
+        }
     }
 
     pub(crate) struct PySourceBuilder {
@@ -202,6 +208,16 @@ pub(crate) mod builder {
                 "root indent block can't be popped (push_indent_block / pop_indent_block mismatch?)"
             );
             self.indent_block_stack.pop();
+        }
+
+        pub fn insert_before_current_line(&mut self, builder: PySourceBuilder) {
+            self.top().insert_before_current_line(builder);
+        }
+
+        fn unwrap_root_indent_block(self) -> IndentBlock {
+            Rc::into_inner(self.indent_block_stack.into_iter().next().unwrap())
+                .unwrap()
+                .into_inner()
         }
 
         pub fn finish(self) -> PySource {

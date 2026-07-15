@@ -12,6 +12,11 @@ pub(crate) enum PySegment {
         segments: Rc<[PySegment]>,
     },
     MetaExpr(MetaExpr),
+    Quote {
+        outer_group: Rc<Group>,
+        _inner_group: Rc<Group>,
+        content: Box<[CodeRegion]>,
+    },
 }
 
 #[derive(Debug)]
@@ -195,18 +200,25 @@ pub(crate) mod parser {
             CodeRegionParser::new(settings, parent.ctx)
         }
 
-        fn parse_py_segment(tokens: &mut TokenBuffer) -> PySegment {
+        fn parse_py_segment(&mut self, tokens: &mut TokenBuffer) -> PySegment {
             if tokens.is_py_marker_escape() {
                 PySegment::Token(Token::Punct(tokens.read_unescaped_py_marker_escape()))
             } else if let Some(meta_expr) = MetaExpr::parse(tokens) {
                 PySegment::MetaExpr(meta_expr)
+            } else if let Some((outer, inner)) = tokens.read_double_group(Delimiter::Brace) {
+                let content = Self::new_derived(self, |s| s.pure_python_mode = false).parse(inner.tokens());
+                PySegment::Quote {
+                    outer_group: outer,
+                    _inner_group: inner,
+                    content,
+                }
             } else {
                 match tokens.read_one() {
                     Some(Token::Group(group)) => {
                         let mut group_tokens = group.tokens();
                         let mut segments = Vec::new();
                         while !group_tokens.exhausted() {
-                            segments.push(Self::parse_py_segment(&mut group_tokens));
+                            segments.push(self.parse_py_segment(&mut group_tokens));
                         }
                         PySegment::Group {
                             group: group.clone(),
@@ -291,7 +303,7 @@ pub(crate) mod parser {
                     }));
                 };
 
-                py_segments.push(Self::parse_py_segment(tokens));
+                py_segments.push(self.parse_py_segment(tokens));
 
                 if tokens.peek(-1).eq_punct(';') {
                     return Some(ParsePyResult::Stmt(PyStmt {

@@ -1,6 +1,6 @@
 use super::{PY_MARKER, PY_MARKER_IDENT};
-use crate::utils::rust_token::{Punct, Token, TokenBuffer, TokenOptionEx};
-use proc_macro2::{Spacing, TokenStream, TokenTree};
+use crate::utils::rust_token::{Group, Punct, Token, TokenBuffer, TokenOptionEx};
+use proc_macro2::{Delimiter, Spacing, TokenStream, TokenTree};
 use quote::TokenStreamExt;
 use std::rc::Rc;
 
@@ -10,6 +10,9 @@ pub(super) trait TokenBufferEx {
     fn read_unescaped_py_marker_escape(&mut self) -> Rc<Punct>;
     fn is_py_marker(&self) -> bool;
     fn read_py_marker(&mut self) -> Rc<Punct>;
+
+    /// Read stuff like `{{...}}`
+    fn read_double_group(&mut self, delimiter: Delimiter) -> Option<(Rc<Group>, Rc<Group>)>;
 }
 
 fn _is_py_marker(token: Option<&Token>) -> bool {
@@ -58,6 +61,19 @@ impl TokenBufferEx for TokenBuffer {
 
     fn read_py_marker(&mut self) -> Rc<Punct> {
         as_py_marker(self.read_one())
+    }
+
+    fn read_double_group(&mut self, delimiter: Delimiter) -> Option<(Rc<Group>, Rc<Group>)> {
+        let outer = self.current().expect_group(delimiter).ok()?;
+        let outer_tokens = outer.tokens();
+        let [Token::Group(inner)] = outer_tokens.slice(..) else {
+            return None;
+        };
+        if inner.delimiter() != delimiter {
+            return None;
+        }
+        self.seek(1).unwrap();
+        Some((outer, inner.clone()))
     }
 }
 

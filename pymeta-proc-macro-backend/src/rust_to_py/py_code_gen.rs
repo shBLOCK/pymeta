@@ -81,15 +81,22 @@ impl PyMetaExecutable {
 
 pub(crate) struct PyCodeGenContext {
     objs: Vec<PyObj>,
+    uid_counter: usize,
 }
 impl PyCodeGenContext {
     pub fn new() -> Self {
-        Self { objs: Vec::new() }
+        Self { objs: Vec::new(), uid_counter: 0 }
     }
-    
+
     fn add_obj(&mut self, obj: PyObj) -> usize {
         self.objs.push(obj);
         self.objs.len() - 1
+    }
+
+    fn next_uid(&mut self) -> usize {
+        let value = self.uid_counter;
+        self.uid_counter += 1;
+        value
     }
 }
 
@@ -156,6 +163,10 @@ impl PyCodeGen<'_> {
                 // other cases of before ident (e.g. before `as` in `a = foo() as Bar`)
                 [.., _, PT(Token::Ident(_))] => true,
 
+                // neighboring meta stuff
+                [.., _, PySegment::MetaExpr(..) | PySegment::Quote { .. }]
+                | [.., PySegment::MetaExpr(..) | PySegment::Quote { .. }, _] => true,
+
                 _ => false,
             }
         }
@@ -220,6 +231,32 @@ impl PyCodeGen<'_> {
                 PySegment::MetaExpr(meta_expr) => {
                     // meta_expr.codegen(self);
                     todo!()
+                }
+                PySegment::Quote { outer_group, content, .. } => {
+                    let span = outer_group.span();
+                    let func_name = format_args!("__pymeta_quote_{}__", self.ctx.next_uid());
+
+                    let mut content_codegen = Self::new(self.ctx);
+                    content_codegen.py.new_line(None);
+                    content_codegen
+                        .py
+                        .append(PySrcSegment::new(format!("def {func_name}():"), span.clone()));
+                    content_codegen.py.push_indent_block(INDENT_SIZE);
+                    content_codegen.py.new_line(None);
+                    content_codegen
+                        .py
+                        .append(("with Tokens() as __pymeta_quote_result__:", span.clone()));
+                    content_codegen.py.push_indent_block(INDENT_SIZE);
+                    content_codegen.append_code_regions(content.iter());
+                    content_codegen.py.pop_indent_block();
+                    content_codegen.py.new_line(None);
+                    content_codegen
+                        .py
+                        .append(("return __pymeta_quote_result__;", span.clone()));
+                    content_codegen.py.pop_indent_block();
+
+                    self.py.insert_before_current_line(content_codegen.py);
+                    self.py.append(PySrcSegment::new(format!("{func_name}()"), span));
                 }
             }
             segments.seek(1).unwrap();
