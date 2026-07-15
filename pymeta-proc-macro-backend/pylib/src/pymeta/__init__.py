@@ -83,8 +83,10 @@ class Tokens(MutableSequence[Token]):
     @contextlib.contextmanager
     def _none_ctx(cls):
         cls._CTX_STACK.append(None)
-        yield
-        assert cls._CTX_STACK.pop() is None
+        try:
+            yield
+        finally:
+            assert cls._CTX_STACK.pop() is None
 
     @staticmethod
     def _coerce(items: Iterable[CoerceToTokens], *, span: Span | None = None, out: list[Token] | None = None) -> list[
