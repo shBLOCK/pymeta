@@ -231,6 +231,11 @@ struct Context {
     dummy: Option<TokenStream>,
 }
 
+// TODO: this is not used for general `pymeta!` calls since it may hide the `compile_error!()` messages under stable
+//       if the compiler decides to ignore the macro output because it's invalid in current context.
+//       It's also not used for macro defining macros, but maybe we should output a dummy macro instead?
+//       Expanding that dummy macro may lead to even more compile errors in some cases though (need to be tested).
+#[allow(unused)]
 pub fn set_dummy_output(tokens: TokenStream) {
     let _ = get_context().as_mut().unwrap().dummy.insert(tokens);
 }
