@@ -312,7 +312,7 @@ impl ProcMacroResult {
 pub fn run_proc_macro(f: impl (FnOnce() -> TokenStream) + UnwindSafe) -> ProcMacroResult {
     static PROC_MACRO_LOCK: Mutex<()> = Mutex::new(());
     let _proc_macro_lock = PROC_MACRO_LOCK.lock().unwrap();
-    
+
     {
         let mut proc_macro_thread = PROC_MACRO_THREAD.lock().unwrap();
         assert!(proc_macro_thread.is_none(), "can't reenter run_proc_macro()");
