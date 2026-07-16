@@ -10,8 +10,11 @@ categories.workspace = true
 keywords.workspace = true
 include = ["/README.md"]
 
+[lib]
+doctest = false
+
 [workspace.package]
-version = "0.1.0-alpha.1"
+version = "0.2.0"
 description = "Metaprogramming Rust in Python!"
 authors = ["shBLOCK <shblock3@gmail.com>"]
 edition = "2024"
@@ -57,6 +60,7 @@ debug = true
 [workspace.lints.clippy]
 unwrap_or_default = "allow"
 collapsible_if = "allow"
+needless_doctest_main = "allow"
 
 [lints]
 workspace = true
