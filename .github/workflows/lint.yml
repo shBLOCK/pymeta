@@ -30,4 +30,4 @@ jobs:
           toolchain: ${{matrix.toolchain}}
           components: clippy
       - name: Run clippy
-        run: cargo clippy --workspace --lib ${{matrix.features}} --keep-going
+        run: cargo clippy --workspace --lib ${{matrix.features}} --keep-going -- --deny warnings
