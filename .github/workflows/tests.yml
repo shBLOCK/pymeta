@@ -42,4 +42,7 @@ jobs:
           ${{ matrix.features }} \
           --tests -- --test-threads=1
       - name: Upload to Codecov
-        run: echo TODO
+        uses: codecov/codecov-action@v7
+        with: 
+          files: lcov.info
+          fail_ci_if_error: true
