@@ -7,24 +7,27 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  fmt:
+  rustfmt:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
       - name: rustfmt
         run: cargo fmt --check --verbose
-  lint:
+  clippy:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        toolchain:
-          - nightly
-          - stable
+        include:
+          - toolchain: nightly
+            features: "--all-features"
+          - toolchain: stable
+            features: "--features \"dump_source_on_error\""
     steps:
       - uses: actions/checkout@v7
-      - name: rustup
-        run: rustup update ${{ matrix.toolchain }} && rustup default ${{ matrix.toolchain }}
-      - name: Install clippy
-        run: rustup component add clippy
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{matrix.toolchain}}
+          components: clippy
       - name: Run clippy
-        run: cargo clippy --workspace --lib --all-features --keep-going
+        run: cargo clippy --workspace --lib ${{matrix.features}} --keep-going
