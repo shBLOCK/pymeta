@@ -28,7 +28,7 @@ jobs:
         working-directory: tests/cpython_env
         run: uv sync
       - name: Install cargo-llvm-cov
-        if: ${{ matrix.toolchain == 'nightly' }}
+        if: ${{ matrix.coverage }}
         uses: taiki-e/install-action@cargo-llvm-cov
       - name: Run tests ${{ matrix.coverage && 'with llvm-cov' || '' }}
         run: |
@@ -42,6 +42,7 @@ jobs:
           ${{ matrix.features }} \
           --tests -- --test-threads=1
       - name: Upload to Codecov
+        if: ${{ matrix.coverage }}
         uses: codecov/codecov-action@v7
         with: 
           files: lcov.info
