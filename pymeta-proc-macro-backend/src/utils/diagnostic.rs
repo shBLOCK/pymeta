@@ -332,7 +332,7 @@ pub fn run_proc_macro(f: impl (FnOnce() -> TokenStream) + UnwindSafe) -> ProcMac
     let _ = panic::take_hook();
     let context = { get_context().take().expect("Huh? Where did my Context go???") };
     PROC_MACRO_THREAD.lock().unwrap().take();
-    
+
     drop(proc_macro_lock);
 
     let tokens = match result {
