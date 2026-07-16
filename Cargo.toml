@@ -54,12 +54,6 @@ debug = false
 inherits = "dev"
 debug = true
 
-[dev-dependencies]
-pymeta-proc-macro-backend = { path = "pymeta-proc-macro-backend" }
-proc-macro2 = { workspace = true }
-quote = { workspace = true }
-pretty_assertions = "1.4.1"
-
 [workspace.lints.clippy]
 unwrap_or_default = "allow"
 collapsible_if = "allow"

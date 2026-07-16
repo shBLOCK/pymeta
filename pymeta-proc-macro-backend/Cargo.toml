@@ -26,7 +26,6 @@ libc = { version = "0.2.186", optional = true }
 [build-dependencies]
 pyo3-build-config = { version = "0.29.0" }
 
-
 [features]
 proc_macro = ["proc-macro2/proc-macro", "quote/proc-macro"]
 nightly_diagnostic = []
@@ -34,6 +33,10 @@ dump_source_on_error = []
 linux_force_load_python_lib = ["dep:libc"]
 #nightly_proc_macro_span = ["proc-macro2/span-locations"]
 
+[dev-dependencies]
+proc-macro2 = { workspace = true }
+quote = { workspace = true }
+pretty_assertions = "1.4.1"
 
 [lints]
 workspace = true
