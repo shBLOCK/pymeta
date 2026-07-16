@@ -23,6 +23,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@master
         with:
           toolchain: ${{ matrix.toolchain }}
+      - uses: astral-sh/setup-uv@v8.3.2
       - name: Init CPython venv
         working-directory: tests/cpython_env
         run: uv sync
