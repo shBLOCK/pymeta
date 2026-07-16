@@ -12,7 +12,6 @@ Define intuitive **Python-based proc-macros**.<br>
 Seamless **integration with tooling and IDEs**.
 
 # Intro Example
-<!-- backend/vecs -->
 ```rust
 // Generate vector structs with PyMeta inline metaprogramming.
 pymeta! {
@@ -21,7 +20,7 @@ pymeta! {
 ```
 ```rust
 // Expanded code from `pymeta!`:
-INCLUDE!("BACKEND_TEST/include/vecs_ops.output.rs")
+INCLUDE!("BACKEND_TEST/include/vecs.output.rs")
 ```
 ```rust
 fn main() {
