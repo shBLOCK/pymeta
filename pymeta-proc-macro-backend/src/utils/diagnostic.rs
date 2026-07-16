@@ -311,7 +311,8 @@ impl ProcMacroResult {
 
 pub fn run_proc_macro(f: impl (FnOnce() -> TokenStream) + UnwindSafe) -> ProcMacroResult {
     static PROC_MACRO_LOCK: Mutex<()> = Mutex::new(());
-    let _proc_macro_lock = PROC_MACRO_LOCK.lock().unwrap();
+    PROC_MACRO_LOCK.clear_poison();
+    let proc_macro_lock = PROC_MACRO_LOCK.lock().unwrap();
 
     {
         let mut proc_macro_thread = PROC_MACRO_THREAD.lock().unwrap();
@@ -331,6 +332,8 @@ pub fn run_proc_macro(f: impl (FnOnce() -> TokenStream) + UnwindSafe) -> ProcMac
     let _ = panic::take_hook();
     let context = { get_context().take().expect("Huh? Where did my Context go???") };
     PROC_MACRO_THREAD.lock().unwrap().take();
+    
+    drop(proc_macro_lock);
 
     let tokens = match result {
         Ok(it) => Some(it),
