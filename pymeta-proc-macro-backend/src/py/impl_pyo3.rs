@@ -50,7 +50,7 @@ macro_rules! _importer_files_dict_item {
 fn initialize() {
     static INITIALIZED: OnceLock<()> = OnceLock::new();
     INITIALIZED.get_or_init(|| {
-        #[cfg(all(target_os = "linux", feature = "linux_force_load_python_lib"))]
+        #[cfg(all(target_os = "linux", feature = "proc_macro", feature = "linux_force_load_python_lib"))]
         unsafe {
             let libpython = c_str!(concat!("lib", env!("PYMETA_LIBPYTHON_NAME"), ".so"));
             libc::dlopen(libpython.as_ptr(), libc::RTLD_NOW | libc::RTLD_GLOBAL);
