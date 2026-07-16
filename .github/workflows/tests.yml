@@ -33,7 +33,7 @@ jobs:
       - name: Run tests ${{ matrix.coverage && 'with llvm-cov' || '' }}
         run: |
           source ./tests/cpython_env/.venv/bin/activate
-          export LD_LIBRARY_PATH="$(dirname "$(python -c 'import sysconfig; print(sysconfig.get_config_var("LIBDIR"))')"):$LD_LIBRARY_PATH"
+          export LD_LIBRARY_PATH="$(python -c 'import sysconfig; print(sysconfig.get_config_var("LIBDIR"))'):$LD_LIBRARY_PATH"
           echo "$LD_LIBRARY_PATH"
           
           cargo \
