@@ -30,8 +30,10 @@ jobs:
       - name: Install cargo-llvm-cov
         if: ${{ matrix.toolchain == 'nightly' }}
         uses: taiki-e/install-action@cargo-llvm-cov
-      - name: Run tests ${{ matrix.coverage && 'with coverage' || '' }}
+      - name: Run tests ${{ matrix.coverage && 'with llvm-cov' || '' }}
         run: |
+          pwd
+          ls
           source ./tests/cpython_env/.venv/bin/activate
           cargo \
           ${{ matrix.coverage && 'llvm-cov --lcov --output-path lcov.info' || ''}} \

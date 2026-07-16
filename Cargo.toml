@@ -55,7 +55,7 @@ inherits = "dev"
 debug = true
 
 [dev-dependencies]
-pymeta-proc-macro-backend = { path = "pymeta-proc-macro-backend", features = [] }
+pymeta-proc-macro-backend = { path = "pymeta-proc-macro-backend" }
 proc-macro2 = { workspace = true }
 quote = { workspace = true }
 pretty_assertions = "1.4.1"
