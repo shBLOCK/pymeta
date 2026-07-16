@@ -1,0 +1,28 @@
+name: Lint
+on:
+  push:
+  pull_request:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  fmt:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: rustfmt
+        run: cargo fmt --check --verbose
+  lint:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        toolchain:
+          - nightly
+          - stable
+    steps:
+      - uses: actions/checkout@v7
+      - name: rustup
+        run: rustup update ${{ matrix.toolchain }} && rustup default ${{ matrix.toolchain }}
+      - name: clippy
+        run: cargo clippy --workspace --lib --all-features --keep-going
