@@ -1,9 +1,17 @@
+from __future__ import annotations
+
+import sys
 import contextlib
 import weakref
 from abc import ABC, abstractmethod
 from collections import deque
 from collections.abc import Sequence
-from string.templatelib import Template
+
+if sys.version_info >= (3, 14):
+    from string.templatelib import Template
+else:
+    class Template:
+        pass
 from typing import SupportsInt, SupportsFloat, final, Collection, Final, SupportsBytes, MutableSequence, overload, Self, \
     Any, Iterable
 
@@ -304,7 +312,7 @@ class Tokens(MutableSequence[Token]):
                     append(FloatLiteral(value))
                 case bool(value):
                     append(BoolLiteral(value))
-                case bytes(bts) | bytearray(bts) | memoryview(bts):
+                case bytes(bts) | bytearray(bts) | (memoryview() as bts):
                     append(BytesLiteral(bts))
                 case tuple(tup):
                     append(Group(Group.PARENTHESIS, Tokens(items=tup)))
@@ -888,7 +896,7 @@ class BoolLiteral(Literal[bool]):
 @overload
 def lit(value: str, /, *, span: Span | None = None) -> StrLiteral: ...
 @overload
-def lit(value: bytes | bytearray | memoryview[Any], /, *, span: Span | None = None) -> BytesLiteral: ...
+def lit(value: bytes | bytearray | memoryview, /, *, span: Span | None = None) -> BytesLiteral: ...
 @overload
 def lit(*, chr: Any, span: Span | None = None) -> StrLiteral: ...
 @overload
