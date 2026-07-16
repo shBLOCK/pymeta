@@ -1,0 +1,41 @@
+name: Tests
+on:
+  push:
+  pull_request:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - toolchain: nightly
+            features: '--features "dump_source_on_error"'
+            coverage: true
+          - toolchain: stable
+            features: '--features "dump_source_on_error"'
+            coverage: false
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ matrix.toolchain }}
+      - name: Init CPython venv
+        working-directory: tests/cpython_env
+        run: uv sync
+      - name: Install cargo-llvm-cov
+        if: ${{ matrix.toolchain == 'nightly' }}
+        uses: taiki-e/install-action@cargo-llvm-cov
+      - name: Run tests ${{ matrix.coverage && 'with coverage' || '' }}
+        run: |
+          source ./tests/cpython_env/.venv/bin/activate
+          cargo \
+          ${{ matrix.coverage && 'llvm-cov --lcov --output-path lcov.info' || ''}} \
+          test -p pymeta -p pymeta-proc-macro-backend \
+          ${{ matrix.features }} \
+          --tests -- --test-threads=1
+      - name: Upload to Codecov
+        run: echo TODO

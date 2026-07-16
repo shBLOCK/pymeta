@@ -1,16 +1,17 @@
+mod basic;
+
 use proc_macro2::{TokenStream, TokenTree};
 use std::io::Write;
 use std::process::{Command, Stdio};
 
 fn tokens_eq(a: TokenStream, b: TokenStream) -> bool {
     fn token_eq(a: TokenTree, b: TokenTree) -> bool {
+        use TokenTree::*;
         match (a, b) {
-            (TokenTree::Ident(a), TokenTree::Ident(b)) => a == b,
-            (TokenTree::Punct(a), TokenTree::Punct(b)) => a.as_char() == b.as_char() && a.spacing() == b.spacing(),
-            (TokenTree::Literal(a), TokenTree::Literal(b)) => a.to_string() == b.to_string(),
-            (TokenTree::Group(a), TokenTree::Group(b)) => {
-                a.delimiter() == b.delimiter() && tokens_eq(a.stream(), b.stream())
-            }
+            (Ident(a), Ident(b)) => a == b,
+            (Punct(a), Punct(b)) => a.as_char() == b.as_char() && a.spacing() == b.spacing(),
+            (Literal(a), Literal(b)) => a.to_string() == b.to_string(),
+            (Group(a), Group(b)) => a.delimiter() == b.delimiter() && tokens_eq(a.stream(), b.stream()),
             _ => false,
         }
     }
@@ -80,6 +81,7 @@ macro_rules! test_proc_macro_impl {
             let output_text = crate::rustfmt(&output.to_string());
             let expected_output_text = crate::rustfmt(&expected_output.to_string());
             let diff = ::pretty_assertions::StrComparison::new(&output_text, &expected_output_text);
+            println!("Output:\n{output_text}");
             print!("{diff}");
             panic!("incorrect output");
         }

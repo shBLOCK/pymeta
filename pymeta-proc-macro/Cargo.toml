@@ -9,8 +9,6 @@ proc-macro = true
 [dependencies]
 pymeta-proc-macro-backend = { path = "../pymeta-proc-macro-backend", features = ["proc_macro"] }
 
-proc-macro2 = { workspace = true }
-
 [features]
 nightly_diagnostic = ["pymeta-proc-macro-backend/nightly_diagnostic"]
 dump_source_on_error = ["pymeta-proc-macro-backend/dump_source_on_error"]
