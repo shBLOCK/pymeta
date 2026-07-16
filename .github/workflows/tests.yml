@@ -33,7 +33,7 @@ jobs:
       - name: Run tests ${{ matrix.coverage && 'with llvm-cov' || '' }}
         run: |
           source ./tests/cpython_env/.venv/bin/activate
-          cargo \
+          PYO3_PRINT_CONFIG=1 cargo \
           ${{ matrix.coverage && 'llvm-cov --lcov --output-path lcov.info' || ''}} \
           test --package pymeta-proc-macro-backend \
           ${{ matrix.features }} \
