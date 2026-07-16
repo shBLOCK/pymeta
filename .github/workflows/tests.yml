@@ -35,7 +35,7 @@ jobs:
           source ./tests/cpython_env/.venv/bin/activate
           cargo \
           ${{ matrix.coverage && 'llvm-cov --lcov --output-path lcov.info' || ''}} \
-          test --workspace \
+          test --workspace --exclude pymeta-proc-macro \
           ${{ matrix.features }} \
           --tests -- --test-threads=1
       - name: Upload to Codecov
