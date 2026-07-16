@@ -9,7 +9,7 @@ pub(crate) trait SpanOptionEx {
 impl SpanOptionEx for Option<Span> {
     fn join_or_fallback(self, other: Self) -> Span {
         match (self, other) {
-            (Some(lhs), Some(rhs)) => lhs.join(rhs).unwrap_or_else(Span::call_site),
+            (Some(lhs), Some(rhs)) => lhs.join(rhs).unwrap_or(lhs),
             (Some(lhs), None) => lhs,
             (None, Some(rhs)) => rhs,
             (None, None) => Span::call_site(),
