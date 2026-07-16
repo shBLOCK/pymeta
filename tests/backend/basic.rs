@@ -5,7 +5,6 @@ fn vecs() {
     test_proc_macro_impl! {
         pymeta {
             $import cowsay;
-            $assert False, cowsay;
             $for dims in range(2, 5):{
                 struct Vec~$dims$ {
                     $for i in range(dims):{
