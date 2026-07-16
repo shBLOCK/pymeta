@@ -43,6 +43,7 @@ macro_rules! quote_or_include_tokens {
         (std::str::FromStr::from_str(include_str!($file)) as std::result::Result<::proc_macro2::TokenStream, _>)
             .unwrap_or_else(|e| panic!("Failed to parse included Rust file `{}`: {e:?}", $file))
     };
+    { include_quote!($file:expr) } => { include!($file) };
     { $($tokens:tt)* } => { ::quote::quote! { $($tokens)* } };
 }
 #[allow(unused)]
