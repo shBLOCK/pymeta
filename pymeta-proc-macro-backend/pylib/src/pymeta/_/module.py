@@ -3,6 +3,7 @@ import sys
 from importlib.abc import InspectLoader, MetaPathFinder
 import importlib.util
 
+_PRELUDE = compile("import pymeta\nfrom pymeta import *", "<PyMeta module prelude>", "exec", dont_inherit=True)
 
 class PyMetaModuleImporter(MetaPathFinder, InspectLoader):
     def __init__(self, path: str, modules: dict[str, str]):
@@ -37,3 +38,7 @@ class PyMetaModuleImporter(MetaPathFinder, InspectLoader):
 
     def is_package(self, fullname):
         return self.path.startswith(fullname)
+    
+    def exec_module(self, module):
+        exec(_PRELUDE, module.__dict__)
+        super().exec_module(module)
