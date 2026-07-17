@@ -285,13 +285,7 @@ class Tokens(MutableSequence[Token]):
                     while index < len(string) and _native.is_ident_continue(string[index]):
                         index += 1
                     ident = string[start:index]
-                    match ident:
-                        case "false":
-                            append(BoolLiteral(False))
-                        case "true":
-                            append(BoolLiteral(True))
-                        case _:
-                            append(Ident(ident))
+                    append(Ident(ident))
                 elif parse_number():
                     pass
                 elif parse_str_literal():
@@ -311,7 +305,7 @@ class Tokens(MutableSequence[Token]):
                 case float(value):
                     append(FloatLiteral(value))
                 case bool(value):
-                    append(BoolLiteral(value))
+                    append(Ident("true" if value else "false"))
                 case bytes(bts) | bytearray(bts) | (memoryview() as bts):
                     append(BytesLiteral(bts))
                 case tuple(tup):
@@ -868,28 +862,6 @@ class BytesLiteral(Literal[bytes]):
 
     def _append_to_tokenstream(self, stream: _native.TokenStream):
         stream.append_bytes_literal(self.type, self.value, self.span)
-
-
-class BoolLiteral(Literal[bool]):
-    __slots__ = ()
-
-    def __init__(self, value: bool, span: Span | None = None):
-        super().__init__(span)
-        self.value = value
-
-    def __str__(self):
-        return ("false", "true")[self.value]
-
-    def __repr__(self):
-        return f"{self.__class__.__name__}({self.value}, {self.span!r})"
-
-    def __eq__(self, other):
-        if not isinstance(other, BoolLiteral):
-            return False
-        return self.value == other.value
-
-    def _append_to_tokenstream(self, stream: _native.TokenStream):
-        stream.append_ident(self.__str__(), self.span)
 
 
 # @formatter:off
