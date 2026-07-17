@@ -117,176 +117,6 @@ class Tokens(MutableSequence[Token]):
                 raise ValueError(f"Group delimiter mismatch: opening={group.delimiter[0]}, closing={delim[1]}")
             append(group)
 
-        def parse(string: str):
-            index = 0
-
-            def parse_punct() -> bool:
-                nonlocal index
-
-                if string[index] not in Punct.CHARS:
-                    return False
-
-                start = index
-                index += 1
-                while index < len(string) and string[index] in Punct.CHARS:
-                    index += 1
-
-                # lifetime
-                spacing = Punct.JOINT \
-                    if string[index - 1] == "'" and (index < len(string) and _native.is_ident_start(string[index])) \
-                    else Punct.ALONE
-
-                append(Punct(string[start:index], spacing))
-                return True
-
-            def parse_number() -> bool:
-                import re
-                nonlocal index
-
-                def is_dec_digit(char: str) -> bool:
-                    return ord('0') <= ord(char) <= ord('9')
-
-                def is_digit(char: str) -> bool:
-                    char = ord(char)
-                    return (ord('0') <= char <= ord('9')
-                            or ord('a') <= char <= ord('f')
-                            or ord('A') <= char <= ord('F'))
-
-                start = index
-
-                # if string[index] == "-":
-                #     if not is_dec_digit(string[index + 1]):
-                #         return False
-                #     index += 1
-                # else:
-                #     if not is_dec_digit(string[index]):
-                #         return False
-
-                if not is_dec_digit(string[index]):
-                    return False
-
-                found_dot = False
-                while index < len(string):
-                    char = string[index]
-                    if char in ('e', 'E'):
-                        index += 1
-                        if index < len(string) and string[index] in ('+', '-'):
-                            index += 1
-                        continue
-                    if is_digit(char) or char in ('_', 'b', 'o', 'x', 'u', 'i', 'f'):
-                        index += 1
-                        continue
-                    if char == '.':
-                        if found_dot:
-                            break
-                        if (
-                            (index + 1) < len(string)
-                            and (string[index + 1] == '.' or _native.is_ident_start(string[index + 1]))
-                        ):
-                            break
-                        found_dot = True
-                        index += 1
-                        continue
-                    break
-
-                segment = string[start:index]
-                # int
-                if match := re.fullmatch(
-                    r"(?P<num>(?:0[bo])?[\d_]+|0x[\da-fA-F_]+)(?P<suffix>[ui]\d+)?",
-                    segment, flags=re.ASCII
-                ):
-                    append(IntLiteral(int(match.group("num")), match.group("suffix") or None))
-                # float
-                elif match := re.fullmatch(
-                    r"(?P<num>\d+(?:\.\d*)?(?:[eE][+-]?\d+)?)(?P<suffix>f\d+)?",
-                    segment, flags=re.ASCII
-                ):
-                    append(FloatLiteral(float(match.group("num")), match.group("suffix") or None))
-                else:
-                    raise ValueError(f"Invalid number literal: {segment!r}")
-
-                return True
-
-            def parse_str_literal() -> bool:
-                nonlocal index
-
-                if string[index] in ('b', 'c'):
-                    prefix = string[index]
-                    if not ((index + 1) < len(string) and string[index + 1] in ('"', "'")):
-                        return False
-                    quote = string[index + 1]
-                    index += 2
-                else:
-                    prefix = None
-                    if not string[index] in ('"', "'"):
-                        return False
-                    quote = string[index]
-                    index += 1
-
-                content = []
-                while index < len(string):
-                    if string[index] == quote:
-                        index += 1
-                        break
-                    match tuple(string[index:index + 3]):
-                        case ('\\', '"', *_):
-                            content.append('"')
-                            index += 2
-                        case ('\\', "'", *_):
-                            content.append("'")
-                            index += 2
-                        case ('\\', '\\', '"'):
-                            content.append(r'\"')
-                            index += 3
-                        case ('\\', '\\', "'"):
-                            content.append(r"\'")
-                            index += 3
-                        case (char, *_):
-                            content.append(char)
-                            index += 1
-                else:
-                    raise ValueError("Incomplete string literal")
-
-                content = "".join(content)
-                is_char = quote == "'"
-                match prefix:
-                    case None:
-                        append(StrLiteral(content, StrLiteral.CHR if is_char else StrLiteral.STR))
-                    case 'b':
-                        append(BytesLiteral(content.encode(), BytesLiteral.BYTE if is_char else BytesLiteral.BYTES))
-                    case 'c':
-                        append(BytesLiteral(content.encode(), BytesLiteral.CSTR))
-                    case _:
-                        assert not "reachable"
-
-                return True
-
-            while index < len(string):
-                char = string[index]
-                if char.isspace():
-                    index += 1
-                elif char in "([{":
-                    push_group(char)
-                    index += 1
-                elif char in ")]}":
-                    pop_group(char)
-                    index += 1
-                elif parse_punct():
-                    pass
-                elif _native.is_ident_start(char):
-                    start = index
-                    index += 1
-                    while index < len(string) and _native.is_ident_continue(string[index]):
-                        index += 1
-                    ident = string[start:index]
-                    append(Ident(ident))
-                elif parse_number():
-                    pass
-                elif parse_str_literal():
-                    pass
-                else:
-                    raise ValueError(f"Invalid syntax near {string[max(index - 8, 0):index + 9]!r}")
-
         def process_one(item: CoerceToTokens):
             match item:
                 case Tokens() | TokensView():
@@ -300,14 +130,14 @@ class Tokens(MutableSequence[Token]):
                     append(FloatLiteral(value))
                 case bool(value):
                     append(Ident("true" if value else "false"))
+                case str(string):
+                    append(StrLiteral(string))
                 case bytes(bts) | bytearray(bts) | (memoryview() as bts):
                     append(BytesLiteral(bts))
                 case tuple(tup):
                     append(Group(Group.PARENTHESIS, Tokens(items=tup)))
                 case list(lst):
                     append(Group(Group.BRACKET, Tokens(items=lst)))
-                case str(string):
-                    parse(string)
                 case _:
                     raise TypeError(f"Item {item!r} or type {type(item)} can't be coerced into tokens.")
 
