@@ -1,4 +1,6 @@
 /.idea/
 /target
 Cargo.lock
+/.cargo
+
 tmp_*.*
