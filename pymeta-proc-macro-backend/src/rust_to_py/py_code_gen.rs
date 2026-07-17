@@ -248,7 +248,12 @@ impl PyCodeGen<'_> {
                         .py
                         .append(("with Tokens() as __pymeta_quote_result__:", span.clone()));
                     content_codegen.py.push_indent_block(INDENT_SIZE);
-                    content_codegen.append_code_regions(content.iter());
+                    if !content.is_empty() {
+                        content_codegen.append_code_regions(content.iter());
+                    } else {
+                        content_codegen.py.new_line(None);
+                        content_codegen.py.append(("pass", span.clone()));
+                    }
                     content_codegen.py.pop_indent_block();
                     content_codegen.py.new_line(None);
                     content_codegen
