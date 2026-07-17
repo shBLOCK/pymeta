@@ -63,8 +63,9 @@ class Token(ABC):
 
 
 type CoerceToTokens = (
-    Tokens | TokensView | Token 
-    | int | float | bool | str | (bytes | bytearray | memoryview[Any])
+    Tokens | TokensView | Token
+    | str
+    | int | float | bool | (bytes | bytearray | memoryview[Any])
     | (tuple | list)
 )
 
@@ -117,6 +118,20 @@ class Tokens(MutableSequence[Token]):
                 raise ValueError(f"Group delimiter mismatch: opening={group.delimiter[0]}, closing={delim[1]}")
             append(group)
 
+        def process_string(string: str):
+            if string and all(c in Punct.CHARS for c in string):
+                for c in string[:-1]:
+                    append(Punct(c, Punct.JOINT))
+                append(Punct(string[-1], Punct.ALONE))
+            elif Ident._is_valid_ident(string):
+                append(Ident(string))
+            else:
+                raise ValueError(
+                    f"\"{string}\" is not a valid Rust identifier nor Rust punctuations. "
+                    "If this is intended to be a string literal, use `lit(<string>)`. "
+                    "Or use `Tokens.parse()` to parse the string as Rust code."
+                )
+
         def process_one(item: CoerceToTokens):
             match item:
                 case Tokens() | TokensView():
@@ -124,14 +139,14 @@ class Tokens(MutableSequence[Token]):
                         append(token)
                 case Token():
                     append(item)
+                case str(string):
+                    process_string(string)
                 case int(value):
                     append(IntLiteral(value))
                 case float(value):
                     append(FloatLiteral(value))
                 case bool(value):
                     append(Ident("true" if value else "false"))
-                case str(string):
-                    append(StrLiteral(string))
                 case bytes(bts) | bytearray(bts) | (memoryview() as bts):
                     append(BytesLiteral(bts))
                 case tuple(tup):
@@ -394,6 +409,16 @@ class Ident(Token):
     __match_args__ = ("string",)
 
     string: str
+
+    @staticmethod
+    def _is_valid_ident(string: str) -> bool:
+        if string.startswith("r#"):
+            string = string[2:]
+        if not string:
+            return False
+        if not _native.is_ident_start(string[0]):
+            return False
+        return all(_native.is_ident_continue(c) for c in string[1:])
 
     def __init__(self, string: str, span: Span | None = None):
         super().__init__(span)
