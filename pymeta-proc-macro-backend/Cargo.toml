@@ -1,13 +1,11 @@
 [package]
 name = "pymeta-proc-macro-backend"
 version.workspace = true
-description.workspace = true
+description = "Proc-macro implementations for PyMeta (do not use directly)"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
-categories.workspace = true
-keywords.workspace = true
 include = ["/pylib"]
 
 [dependencies]

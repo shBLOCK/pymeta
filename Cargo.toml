@@ -1,13 +1,17 @@
 [package]
 name = "pymeta"
 version.workspace = true
-description.workspace = true
+description = "Powerful Python-based metaprogramming for Rust"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
-categories.workspace = true
-keywords.workspace = true
+categories = [
+    "rust-patterns",
+    "development-tools::procedural-macro-helpers",
+    "development-tools::build-utils"
+]
+keywords = ["proc-macro", "python", "meta-programming", "codegen"]
 include = ["/README.md"]
 
 [lib]
@@ -15,17 +19,10 @@ doctest = false
 
 [workspace.package]
 version = "0.2.0"
-description = "Metaprogramming Rust in Python!"
 authors = ["shBLOCK <shblock3@gmail.com>"]
 edition = "2024"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/shBLOCK/pymeta"
-categories = [
-    "rust-patterns",
-    "development-tools::procedural-macro-helpers",
-    "development-tools::build-utils"
-]
-keywords = ["proc-macro", "python", "meta-programming", "codegen"]
 
 [workspace]
 members = [

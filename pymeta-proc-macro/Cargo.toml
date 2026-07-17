@@ -1,7 +1,11 @@
 [package]
 name = "pymeta-proc-macro"
 version.workspace = true
+description = "Proc-macro definitions for PyMeta (do not use directly)"
+authors.workspace = true
 edition.workspace = true
+license.workspace = true
+repository.workspace = true
 
 [lib]
 proc-macro = true
