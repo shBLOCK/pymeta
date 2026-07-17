@@ -44,6 +44,7 @@ quote = { version = "1.0.46", default-features = false }
 [features]
 default = ["linux_force_load_python_lib"]
 nightly_diagnostic = ["pymeta-proc-macro/nightly_diagnostic"]
+nightly_tracked = ["pymeta-proc-macro/nightly_tracked"]
 dump_source_on_error = ["pymeta-proc-macro/dump_source_on_error"]
 linux_force_load_python_lib = ["pymeta-proc-macro/linux_force_load_python_lib"]
 

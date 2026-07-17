@@ -11,6 +11,7 @@ pymeta-proc-macro-backend = { path = "../pymeta-proc-macro-backend", features = 
 
 [features]
 nightly_diagnostic = ["pymeta-proc-macro-backend/nightly_diagnostic"]
+nightly_tracked = ["pymeta-proc-macro-backend/nightly_tracked"]
 dump_source_on_error = ["pymeta-proc-macro-backend/dump_source_on_error"]
 linux_force_load_python_lib = ["pymeta-proc-macro-backend/linux_force_load_python_lib"]
 

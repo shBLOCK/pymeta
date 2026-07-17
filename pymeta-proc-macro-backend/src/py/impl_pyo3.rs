@@ -5,6 +5,7 @@ use crate::py::error::{FrameSummary, PythonError, SourceLocation, StackSummary};
 use crate::rust_to_py::PY_GLOBAL_OBJS_ARRAY_NAME;
 use crate::rust_to_py::meta::stmt::ImportMetaStmt;
 use crate::rust_to_py::py_code_gen::{PyMetaExecutable, PyObj};
+use crate::utils::span::CSpan;
 use either::Either;
 use proc_macro2::TokenStream;
 use pyo3::IntoPyObjectExt;
@@ -268,15 +269,26 @@ impl<'py> IntoPyObject<'py> for &PyObj {
     }
 }
 
+impl<'py> IntoPyObject<'py> for CSpan {
+    type Target = PyAny;
+    type Output = Bound<'py, Self::Target>;
+    type Error = PyErr;
+
+    fn into_pyobject(self, py: Python<'py>) -> Result<Self::Output, Self::Error> {
+        pymeta_native::PySpan(Rc::new(self)).into_bound_py_any(py)
+    }
+}
+
 #[pymodule]
 mod pymeta_native {
     use crate::utils::span::CSpan;
     use proc_macro2::{Delimiter, Group, Ident, Literal, Punct, Spacing, Span, TokenStream, TokenTree};
-    use pyo3::exceptions::PyValueError;
+    use pyo3::exceptions::{PyKeyError, PyRuntimeError, PyValueError};
     use pyo3::prelude::*;
     use pyo3::types::{PyBytes, PyFloat, PyInt, PyString};
     use std::ffi::CString;
     use std::iter;
+    use std::path::{Path, PathBuf};
     use std::rc::Rc;
     use unicode_ident::{is_xid_continue, is_xid_start};
 
@@ -300,11 +312,58 @@ mod pymeta_native {
         }
 
         #[staticmethod]
-        fn call_site() -> Self {
-            Self(Rc::new(CSpan::from(Span::call_site())))
+        fn call_site() -> CSpan {
+            Span::call_site().into()
         }
 
-        //TODO: more PySpan methods
+        #[staticmethod]
+        fn mixed_site() -> CSpan {
+            Span::mixed_site().into()
+        }
+
+        fn start(&self) -> CSpan {
+            self.0.start_span()
+        }
+
+        fn end(&self) -> CSpan {
+            self.0.end_span()
+        }
+
+        fn line(&self) -> usize {
+            cfg_select! {
+                feature = "proc_macro" => self.0.inner().unwrap().line(),
+                _ => self.0.inner().start().line,
+            }
+        }
+
+        fn column(&self) -> usize {
+            cfg_select! {
+                feature = "proc_macro" => self.0.inner().unwrap().column(),
+                _ => self.0.inner().start().column + 1,
+            }
+        }
+
+        fn file(&self) -> String {
+            self.0.inner().file()
+        }
+
+        fn local_file(&self) -> Option<PathBuf> {
+            self.0.inner().local_file()
+        }
+
+        fn resolved_at(&self, other: &Self) -> CSpan {
+            self.0.inner().resolved_at(other.0.inner()).into()
+        }
+
+        fn located_at(&self, other: &Self) -> CSpan {
+            self.0.inner().located_at(other.0.inner()).into()
+        }
+
+        fn source_text(&self) -> Option<String> {
+            self.0.inner().source_text()
+        }
+
+        //TODO: more PySpan methods (e.g. join) when they stabilize
     }
 
     #[pyclass(name = "TokenStream", unsendable)]
@@ -498,6 +557,40 @@ mod pymeta_native {
                 }
             };
             self.append_token(literal.into(), span)
+        }
+    }
+
+    #[cfg(feature = "proc_macro")]
+    extern crate proc_macro;
+
+    #[pyfunction]
+    fn tracked_path(path: PathBuf) -> PyResult<()> {
+        cfg_select! {
+            feature = "nightly_tracked" => {
+                #[cfg(feature = "proc_macro")]
+                proc_macro::tracked::path(path);
+                Ok(())
+            }
+            _ => Err(PyRuntimeError::new_err("PyMeta: the `nightly_tracked` feature has to be enabled to use this function")),
+        }
+    }
+
+    #[pyfunction]
+    fn tracked_env_var(key: &str) -> PyResult<String> {
+        use std::env::VarError;
+        cfg_select! {
+            feature = "nightly_tracked" => {
+                cfg_select! {
+                    feature = "proc_macro" => proc_macro::tracked::env_var(key),
+                    _ => std::env::var(key),
+                }.map_err(|e| {
+                    match e {
+                        VarError::NotPresent => PyKeyError::new_err(String::from(key)),
+                        VarError::NotUnicode(_) => PyValueError::new_err(format!("the value of env var `{key}` is not valid Unicode")),
+                    }
+                })
+            }
+            _ => Err(PyRuntimeError::new_err("PyMeta: the `nightly_tracked` feature has to be enabled to use this function")),
         }
     }
 }
