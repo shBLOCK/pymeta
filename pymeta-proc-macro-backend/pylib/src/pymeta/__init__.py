@@ -7,11 +7,6 @@ from abc import ABC, abstractmethod
 from collections import deque
 from collections.abc import Sequence
 
-if sys.version_info >= (3, 14):
-    from string.templatelib import Template
-else:
-    class Template:
-        pass
 from typing import SupportsInt, SupportsFloat, final, Collection, Final, SupportsBytes, MutableSequence, overload, Self, \
     Any, Iterable
 
@@ -68,9 +63,8 @@ class Token(ABC):
 
 
 type CoerceToTokens = (
-    Tokens | TokensView | Token
-    | Template | str
-    | int | float | bool | (bytes | bytearray | memoryview[Any])
+    Tokens | TokensView | Token 
+    | int | float | bool | str | (bytes | bytearray | memoryview[Any])
     | (tuple | list)
 )
 
@@ -312,12 +306,6 @@ class Tokens(MutableSequence[Token]):
                     append(Group(Group.PARENTHESIS, Tokens(items=tup)))
                 case list(lst):
                     append(Group(Group.BRACKET, Tokens(items=lst)))
-                case Template() as template:
-                    for part in template:
-                        if isinstance(part, str):
-                            parse(part)
-                        else:
-                            process_one(part)
                 case str(string):
                     parse(string)
                 case _:
