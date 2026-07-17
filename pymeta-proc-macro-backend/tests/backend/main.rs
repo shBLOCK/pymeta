@@ -45,6 +45,10 @@ macro_rules! quote_or_include_tokens {
             .unwrap_or_else(|e| panic!("Failed to parse included Rust file `{}`: {e:?}", $file))
     };
     { include_quote!($file:expr) } => { include!($file) };
+    { parse!($str:expr) } => {
+        (std::str::FromStr::from_str($str) as std::result::Result<::proc_macro2::TokenStream, _>)
+            .unwrap_or_else(|e| panic!("Failed to parse Rust code: {e:?}\ncode:{}", $str))
+    };
     { $($tokens:tt)* } => { ::quote::quote! { $($tokens)* } };
 }
 #[allow(unused)]

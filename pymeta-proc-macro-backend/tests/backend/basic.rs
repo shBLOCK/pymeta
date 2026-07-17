@@ -32,3 +32,33 @@ fn vecs_swizzle() {
         }
     }
 }
+
+#[test]
+fn golden_ratio() {
+    test_proc_macro_impl! {
+        // quote doesn't preserve `**` spacing, so use parse
+        pymeta { parse!("$f32((1 + 5 ** 0.5) / 2)$") } => { 1.618034f32 }
+    }
+}
+
+#[test]
+fn sin_table() {
+    test_proc_macro_impl! {
+        pymeta {
+            include_quote!("include/sin_table.input.rs")
+        } => {
+            include!("include/sin_table.output.rs")
+        }
+    }
+}
+
+#[test]
+fn sin_table_np() {
+    test_proc_macro_impl! {
+        pymeta {
+            include_quote!("include/sin_table_np.input.rs")
+        } => {
+            include!("include/sin_table.output.rs")
+        }
+    }
+}
