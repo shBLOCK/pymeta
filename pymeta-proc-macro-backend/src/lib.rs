@@ -1,5 +1,8 @@
 #![cfg_attr(feature = "nightly_diagnostic", feature(proc_macro_diagnostic))]
-#![cfg_attr(feature = "nightly_tracked", feature(proc_macro_tracked_path, proc_macro_tracked_env))]
+#![cfg_attr(
+    feature = "nightly_tracked",
+    feature(proc_macro_tracked_path, proc_macro_tracked_env)
+)]
 
 use crate::rust_to_py::PY_MARKER_IDENT;
 use crate::rust_to_py::code_region::parser::{CodeRegionParser, CodeRegionParserCtx, CodeRegionParserSettings};

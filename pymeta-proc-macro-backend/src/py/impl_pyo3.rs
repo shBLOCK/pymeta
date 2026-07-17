@@ -281,12 +281,13 @@ impl<'py> IntoPyObject<'py> for CSpan {
 mod pymeta_native {
     use crate::utils::span::CSpan;
     use proc_macro2::{Delimiter, Group, Ident, Literal, Punct, Spacing, Span, TokenStream, TokenTree};
+    #[allow(unused_imports)]
     use pyo3::exceptions::{PyKeyError, PyRuntimeError, PyValueError};
     use pyo3::prelude::*;
     use pyo3::types::{PyBytes, PyFloat, PyInt, PyString};
     use std::ffi::CString;
     use std::iter;
-    use std::path::{Path, PathBuf};
+    use std::path::PathBuf;
     use std::rc::Rc;
     use unicode_ident::{is_xid_continue, is_xid_start};
 
@@ -569,15 +570,18 @@ mod pymeta_native {
                 proc_macro::tracked::path(path);
                 Ok(())
             }
-            _ => Err(PyRuntimeError::new_err("PyMeta: the `nightly_tracked` feature has to be enabled to use this function")),
+            _ => {
+                let _ = path;
+                Err(PyRuntimeError::new_err("PyMeta: the `nightly_tracked` feature has to be enabled to use this function"))
+            }
         }
     }
 
     #[pyfunction]
     fn tracked_env_var(key: &str) -> PyResult<String> {
-        use std::env::VarError;
         cfg_select! {
             feature = "nightly_tracked" => {
+                use std::env::VarError;
                 cfg_select! {
                     feature = "proc_macro" => proc_macro::tracked::env_var(key),
                     _ => std::env::var(key),
@@ -588,7 +592,10 @@ mod pymeta_native {
                     }
                 })
             }
-            _ => Err(PyRuntimeError::new_err("PyMeta: the `nightly_tracked` feature has to be enabled to use this function")),
+            _ => {
+                let _ = key;
+                Err(PyRuntimeError::new_err("PyMeta: the `nightly_tracked` feature has to be enabled to use this function"))
+            }
         }
     }
 }
