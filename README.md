@@ -11,7 +11,7 @@ Generate and transform Rust code by **running Python code at compile time**.<br>
 Define intuitive **Python-based proc-macros**.<br>
 Seamless **integration with tooling and IDEs**.
 
-# Intro Example
+# Intro Example: Vector Structs
 ```rust
 // Generate vector structs with PyMeta inline metaprogramming.
 pymeta! {
@@ -32,27 +32,27 @@ pymeta! {
     }
 }
 ```
-```rust
-// Expanded code from `pymeta!`:
-#[derive(Clone, Copy, Debug, PartialEq)]
-struct Vec2 {
-    x: f32,
-    y: f32,
-}
-#[derive(Clone, Copy, Debug, PartialEq)]
-struct Vec3 {
-    x: f32,
-    y: f32,
-    z: f32,
-}
-#[derive(Clone, Copy, Debug, PartialEq)]
-struct Vec4 {
-    x: f32,
-    y: f32,
-    z: f32,
-    w: f32,
-}
-```
+> Expanded code from `pymeta!`:
+> ```rust
+> #[derive(Clone, Copy, Debug, PartialEq)]
+> struct Vec2 {
+>     x: f32,
+>     y: f32,
+> }
+> #[derive(Clone, Copy, Debug, PartialEq)]
+> struct Vec3 {
+>     x: f32,
+>     y: f32,
+>     z: f32,
+> }
+> #[derive(Clone, Copy, Debug, PartialEq)]
+> struct Vec4 {
+>     x: f32,
+>     y: f32,
+>     z: f32,
+>     w: f32,
+> }
+> ```
 ```rust
 fn main() {
     // PyMeta keeps source-location information so Rust tooling and IDEs
@@ -72,6 +72,7 @@ fn main() {
     let vec = Vec3 { x: 1.0, y: 2.0, z: 3.0 };
 }
 ```
+(See below for the next part of this example)
 
 # Features
 
@@ -88,7 +89,7 @@ fn main() {
 - Reusing code: define "PyMeta modules" in normal Rust modules to reuse metaprogramming code and constants
 
 # Getting Started
-
+## Installation
 PyMeta currently only support the official CPython (**>=3.12**) (through [PyO3](https://pyo3.rs/)).
 A CPython installation is required to compile a crate that uses PyMeta.<br>
 There are plans to support embedded Python interpreters (e.g. MicroPython) in the future to remove the dependency on a
@@ -97,12 +98,14 @@ PyO3 will use the current virtualenv or the system `python`/`python3` executable
 You can set the env var `PYO3_PYTHON=<path to Python executable>` to use a custom interpreter.
 For more information,
 see [PyO3's documentation on configuring the Python version](https://pyo3.rs/latest/building-and-distribution.html#configuring-the-python-version).
+## Usage
+Most features of PyMeta are documented with examples and the code comments in the examples.<br>
+Please read through the examples and their comments to learn to use PyMeta.
 
 <details open>
 <summary>
 
 # Intro Example (Cont.): Vector Structs
-
 </summary>
 
 (See above for the first part of this example)
@@ -152,297 +155,295 @@ pymeta! {
     }
 }
 ```
-```rust
-// Macro expansion:
-impl std::ops::Add for Vec2 {
-    type Output = Vec2;
-    fn add(self, rhs: Self) -> Self {
-        Self {
-            x: self.x + rhs.x,
-            y: self.y + rhs.y,
-        }
-    }
-}
-impl std::ops::AddAssign for Vec2 {
-    fn add_assign(&mut self, rhs: Self) {
-        self.x += rhs.x;
-        self.y += rhs.y;
-    }
-}
-// ... (200+ more lines, see below for full expansion)
-```
-
-<details>
-<summary>Full macro expansion</summary>
-
-```rust
-impl std::ops::Add for Vec2 {
-    type Output = Vec2;
-    fn add(self, rhs: Self) -> Self {
-        Self {
-            x: self.x + rhs.x,
-            y: self.y + rhs.y,
-        }
-    }
-}
-impl std::ops::AddAssign for Vec2 {
-    fn add_assign(&mut self, rhs: Self) {
-        self.x += rhs.x;
-        self.y += rhs.y;
-    }
-}
-impl std::ops::Sub for Vec2 {
-    type Output = Vec2;
-    fn sub(self, rhs: Self) -> Self {
-        Self {
-            x: self.x - rhs.x,
-            y: self.y - rhs.y,
-        }
-    }
-}
-impl std::ops::SubAssign for Vec2 {
-    fn sub_assign(&mut self, rhs: Self) {
-        self.x -= rhs.x;
-        self.y -= rhs.y;
-    }
-}
-impl std::ops::Mul for Vec2 {
-    type Output = Vec2;
-    fn mul(self, rhs: Self) -> Self {
-        Self {
-            x: self.x * rhs.x,
-            y: self.y * rhs.y,
-        }
-    }
-}
-impl std::ops::MulAssign for Vec2 {
-    fn mul_assign(&mut self, rhs: Self) {
-        self.x *= rhs.x;
-        self.y *= rhs.y;
-    }
-}
-impl std::ops::Div for Vec2 {
-    type Output = Vec2;
-    fn div(self, rhs: Self) -> Self {
-        Self {
-            x: self.x / rhs.x,
-            y: self.y / rhs.y,
-        }
-    }
-}
-impl std::ops::DivAssign for Vec2 {
-    fn div_assign(&mut self, rhs: Self) {
-        self.x /= rhs.x;
-        self.y /= rhs.y;
-    }
-}
-impl std::ops::Rem for Vec2 {
-    type Output = Vec2;
-    fn rem(self, rhs: Self) -> Self {
-        Self {
-            x: self.x % rhs.x,
-            y: self.y % rhs.y,
-        }
-    }
-}
-impl std::ops::RemAssign for Vec2 {
-    fn rem_assign(&mut self, rhs: Self) {
-        self.x %= rhs.x;
-        self.y %= rhs.y;
-    }
-}
-impl std::ops::Add for Vec3 {
-    type Output = Vec3;
-    fn add(self, rhs: Self) -> Self {
-        Self {
-            x: self.x + rhs.x,
-            y: self.y + rhs.y,
-            z: self.z + rhs.z,
-        }
-    }
-}
-impl std::ops::AddAssign for Vec3 {
-    fn add_assign(&mut self, rhs: Self) {
-        self.x += rhs.x;
-        self.y += rhs.y;
-        self.z += rhs.z;
-    }
-}
-impl std::ops::Sub for Vec3 {
-    type Output = Vec3;
-    fn sub(self, rhs: Self) -> Self {
-        Self {
-            x: self.x - rhs.x,
-            y: self.y - rhs.y,
-            z: self.z - rhs.z,
-        }
-    }
-}
-impl std::ops::SubAssign for Vec3 {
-    fn sub_assign(&mut self, rhs: Self) {
-        self.x -= rhs.x;
-        self.y -= rhs.y;
-        self.z -= rhs.z;
-    }
-}
-impl std::ops::Mul for Vec3 {
-    type Output = Vec3;
-    fn mul(self, rhs: Self) -> Self {
-        Self {
-            x: self.x * rhs.x,
-            y: self.y * rhs.y,
-            z: self.z * rhs.z,
-        }
-    }
-}
-impl std::ops::MulAssign for Vec3 {
-    fn mul_assign(&mut self, rhs: Self) {
-        self.x *= rhs.x;
-        self.y *= rhs.y;
-        self.z *= rhs.z;
-    }
-}
-impl std::ops::Div for Vec3 {
-    type Output = Vec3;
-    fn div(self, rhs: Self) -> Self {
-        Self {
-            x: self.x / rhs.x,
-            y: self.y / rhs.y,
-            z: self.z / rhs.z,
-        }
-    }
-}
-impl std::ops::DivAssign for Vec3 {
-    fn div_assign(&mut self, rhs: Self) {
-        self.x /= rhs.x;
-        self.y /= rhs.y;
-        self.z /= rhs.z;
-    }
-}
-impl std::ops::Rem for Vec3 {
-    type Output = Vec3;
-    fn rem(self, rhs: Self) -> Self {
-        Self {
-            x: self.x % rhs.x,
-            y: self.y % rhs.y,
-            z: self.z % rhs.z,
-        }
-    }
-}
-impl std::ops::RemAssign for Vec3 {
-    fn rem_assign(&mut self, rhs: Self) {
-        self.x %= rhs.x;
-        self.y %= rhs.y;
-        self.z %= rhs.z;
-    }
-}
-impl std::ops::Add for Vec4 {
-    type Output = Vec4;
-    fn add(self, rhs: Self) -> Self {
-        Self {
-            x: self.x + rhs.x,
-            y: self.y + rhs.y,
-            z: self.z + rhs.z,
-            w: self.w + rhs.w,
-        }
-    }
-}
-impl std::ops::AddAssign for Vec4 {
-    fn add_assign(&mut self, rhs: Self) {
-        self.x += rhs.x;
-        self.y += rhs.y;
-        self.z += rhs.z;
-        self.w += rhs.w;
-    }
-}
-impl std::ops::Sub for Vec4 {
-    type Output = Vec4;
-    fn sub(self, rhs: Self) -> Self {
-        Self {
-            x: self.x - rhs.x,
-            y: self.y - rhs.y,
-            z: self.z - rhs.z,
-            w: self.w - rhs.w,
-        }
-    }
-}
-impl std::ops::SubAssign for Vec4 {
-    fn sub_assign(&mut self, rhs: Self) {
-        self.x -= rhs.x;
-        self.y -= rhs.y;
-        self.z -= rhs.z;
-        self.w -= rhs.w;
-    }
-}
-impl std::ops::Mul for Vec4 {
-    type Output = Vec4;
-    fn mul(self, rhs: Self) -> Self {
-        Self {
-            x: self.x * rhs.x,
-            y: self.y * rhs.y,
-            z: self.z * rhs.z,
-            w: self.w * rhs.w,
-        }
-    }
-}
-impl std::ops::MulAssign for Vec4 {
-    fn mul_assign(&mut self, rhs: Self) {
-        self.x *= rhs.x;
-        self.y *= rhs.y;
-        self.z *= rhs.z;
-        self.w *= rhs.w;
-    }
-}
-impl std::ops::Div for Vec4 {
-    type Output = Vec4;
-    fn div(self, rhs: Self) -> Self {
-        Self {
-            x: self.x / rhs.x,
-            y: self.y / rhs.y,
-            z: self.z / rhs.z,
-            w: self.w / rhs.w,
-        }
-    }
-}
-impl std::ops::DivAssign for Vec4 {
-    fn div_assign(&mut self, rhs: Self) {
-        self.x /= rhs.x;
-        self.y /= rhs.y;
-        self.z /= rhs.z;
-        self.w /= rhs.w;
-    }
-}
-impl std::ops::Rem for Vec4 {
-    type Output = Vec4;
-    fn rem(self, rhs: Self) -> Self {
-        Self {
-            x: self.x % rhs.x,
-            y: self.y % rhs.y,
-            z: self.z % rhs.z,
-            w: self.w % rhs.w,
-        }
-    }
-}
-impl std::ops::RemAssign for Vec4 {
-    fn rem_assign(&mut self, rhs: Self) {
-        self.x %= rhs.x;
-        self.y %= rhs.y;
-        self.z %= rhs.z;
-        self.w %= rhs.w;
-    }
-}
-```
-
-</details>
+> Expansion:
+> ```rust
+> impl std::ops::Add for Vec2 {
+>     type Output = Vec2;
+>     fn add(self, rhs: Self) -> Self {
+>         Self {
+>             x: self.x + rhs.x,
+>             y: self.y + rhs.y,
+>         }
+>     }
+> }
+> impl std::ops::AddAssign for Vec2 {
+>     fn add_assign(&mut self, rhs: Self) {
+>         self.x += rhs.x;
+>         self.y += rhs.y;
+>     }
+> }
+> // ... (200+ more lines, see below for full expansion)
+> ```
+> <details>
+> <summary>Full expansion</summary>
+> 
+> ```rust
+> impl std::ops::Add for Vec2 {
+>     type Output = Vec2;
+>     fn add(self, rhs: Self) -> Self {
+>         Self {
+>             x: self.x + rhs.x,
+>             y: self.y + rhs.y,
+>         }
+>     }
+> }
+> impl std::ops::AddAssign for Vec2 {
+>     fn add_assign(&mut self, rhs: Self) {
+>         self.x += rhs.x;
+>         self.y += rhs.y;
+>     }
+> }
+> impl std::ops::Sub for Vec2 {
+>     type Output = Vec2;
+>     fn sub(self, rhs: Self) -> Self {
+>         Self {
+>             x: self.x - rhs.x,
+>             y: self.y - rhs.y,
+>         }
+>     }
+> }
+> impl std::ops::SubAssign for Vec2 {
+>     fn sub_assign(&mut self, rhs: Self) {
+>         self.x -= rhs.x;
+>         self.y -= rhs.y;
+>     }
+> }
+> impl std::ops::Mul for Vec2 {
+>     type Output = Vec2;
+>     fn mul(self, rhs: Self) -> Self {
+>         Self {
+>             x: self.x * rhs.x,
+>             y: self.y * rhs.y,
+>         }
+>     }
+> }
+> impl std::ops::MulAssign for Vec2 {
+>     fn mul_assign(&mut self, rhs: Self) {
+>         self.x *= rhs.x;
+>         self.y *= rhs.y;
+>     }
+> }
+> impl std::ops::Div for Vec2 {
+>     type Output = Vec2;
+>     fn div(self, rhs: Self) -> Self {
+>         Self {
+>             x: self.x / rhs.x,
+>             y: self.y / rhs.y,
+>         }
+>     }
+> }
+> impl std::ops::DivAssign for Vec2 {
+>     fn div_assign(&mut self, rhs: Self) {
+>         self.x /= rhs.x;
+>         self.y /= rhs.y;
+>     }
+> }
+> impl std::ops::Rem for Vec2 {
+>     type Output = Vec2;
+>     fn rem(self, rhs: Self) -> Self {
+>         Self {
+>             x: self.x % rhs.x,
+>             y: self.y % rhs.y,
+>         }
+>     }
+> }
+> impl std::ops::RemAssign for Vec2 {
+>     fn rem_assign(&mut self, rhs: Self) {
+>         self.x %= rhs.x;
+>         self.y %= rhs.y;
+>     }
+> }
+> impl std::ops::Add for Vec3 {
+>     type Output = Vec3;
+>     fn add(self, rhs: Self) -> Self {
+>         Self {
+>             x: self.x + rhs.x,
+>             y: self.y + rhs.y,
+>             z: self.z + rhs.z,
+>         }
+>     }
+> }
+> impl std::ops::AddAssign for Vec3 {
+>     fn add_assign(&mut self, rhs: Self) {
+>         self.x += rhs.x;
+>         self.y += rhs.y;
+>         self.z += rhs.z;
+>     }
+> }
+> impl std::ops::Sub for Vec3 {
+>     type Output = Vec3;
+>     fn sub(self, rhs: Self) -> Self {
+>         Self {
+>             x: self.x - rhs.x,
+>             y: self.y - rhs.y,
+>             z: self.z - rhs.z,
+>         }
+>     }
+> }
+> impl std::ops::SubAssign for Vec3 {
+>     fn sub_assign(&mut self, rhs: Self) {
+>         self.x -= rhs.x;
+>         self.y -= rhs.y;
+>         self.z -= rhs.z;
+>     }
+> }
+> impl std::ops::Mul for Vec3 {
+>     type Output = Vec3;
+>     fn mul(self, rhs: Self) -> Self {
+>         Self {
+>             x: self.x * rhs.x,
+>             y: self.y * rhs.y,
+>             z: self.z * rhs.z,
+>         }
+>     }
+> }
+> impl std::ops::MulAssign for Vec3 {
+>     fn mul_assign(&mut self, rhs: Self) {
+>         self.x *= rhs.x;
+>         self.y *= rhs.y;
+>         self.z *= rhs.z;
+>     }
+> }
+> impl std::ops::Div for Vec3 {
+>     type Output = Vec3;
+>     fn div(self, rhs: Self) -> Self {
+>         Self {
+>             x: self.x / rhs.x,
+>             y: self.y / rhs.y,
+>             z: self.z / rhs.z,
+>         }
+>     }
+> }
+> impl std::ops::DivAssign for Vec3 {
+>     fn div_assign(&mut self, rhs: Self) {
+>         self.x /= rhs.x;
+>         self.y /= rhs.y;
+>         self.z /= rhs.z;
+>     }
+> }
+> impl std::ops::Rem for Vec3 {
+>     type Output = Vec3;
+>     fn rem(self, rhs: Self) -> Self {
+>         Self {
+>             x: self.x % rhs.x,
+>             y: self.y % rhs.y,
+>             z: self.z % rhs.z,
+>         }
+>     }
+> }
+> impl std::ops::RemAssign for Vec3 {
+>     fn rem_assign(&mut self, rhs: Self) {
+>         self.x %= rhs.x;
+>         self.y %= rhs.y;
+>         self.z %= rhs.z;
+>     }
+> }
+> impl std::ops::Add for Vec4 {
+>     type Output = Vec4;
+>     fn add(self, rhs: Self) -> Self {
+>         Self {
+>             x: self.x + rhs.x,
+>             y: self.y + rhs.y,
+>             z: self.z + rhs.z,
+>             w: self.w + rhs.w,
+>         }
+>     }
+> }
+> impl std::ops::AddAssign for Vec4 {
+>     fn add_assign(&mut self, rhs: Self) {
+>         self.x += rhs.x;
+>         self.y += rhs.y;
+>         self.z += rhs.z;
+>         self.w += rhs.w;
+>     }
+> }
+> impl std::ops::Sub for Vec4 {
+>     type Output = Vec4;
+>     fn sub(self, rhs: Self) -> Self {
+>         Self {
+>             x: self.x - rhs.x,
+>             y: self.y - rhs.y,
+>             z: self.z - rhs.z,
+>             w: self.w - rhs.w,
+>         }
+>     }
+> }
+> impl std::ops::SubAssign for Vec4 {
+>     fn sub_assign(&mut self, rhs: Self) {
+>         self.x -= rhs.x;
+>         self.y -= rhs.y;
+>         self.z -= rhs.z;
+>         self.w -= rhs.w;
+>     }
+> }
+> impl std::ops::Mul for Vec4 {
+>     type Output = Vec4;
+>     fn mul(self, rhs: Self) -> Self {
+>         Self {
+>             x: self.x * rhs.x,
+>             y: self.y * rhs.y,
+>             z: self.z * rhs.z,
+>             w: self.w * rhs.w,
+>         }
+>     }
+> }
+> impl std::ops::MulAssign for Vec4 {
+>     fn mul_assign(&mut self, rhs: Self) {
+>         self.x *= rhs.x;
+>         self.y *= rhs.y;
+>         self.z *= rhs.z;
+>         self.w *= rhs.w;
+>     }
+> }
+> impl std::ops::Div for Vec4 {
+>     type Output = Vec4;
+>     fn div(self, rhs: Self) -> Self {
+>         Self {
+>             x: self.x / rhs.x,
+>             y: self.y / rhs.y,
+>             z: self.z / rhs.z,
+>             w: self.w / rhs.w,
+>         }
+>     }
+> }
+> impl std::ops::DivAssign for Vec4 {
+>     fn div_assign(&mut self, rhs: Self) {
+>         self.x /= rhs.x;
+>         self.y /= rhs.y;
+>         self.z /= rhs.z;
+>         self.w /= rhs.w;
+>     }
+> }
+> impl std::ops::Rem for Vec4 {
+>     type Output = Vec4;
+>     fn rem(self, rhs: Self) -> Self {
+>         Self {
+>             x: self.x % rhs.x,
+>             y: self.y % rhs.y,
+>             z: self.z % rhs.z,
+>             w: self.w % rhs.w,
+>         }
+>     }
+> }
+> impl std::ops::RemAssign for Vec4 {
+>     fn rem_assign(&mut self, rhs: Self) {
+>         self.x %= rhs.x;
+>         self.y %= rhs.y;
+>         self.z %= rhs.z;
+>         self.w %= rhs.w;
+>     }
+> }
+> ```
+> </details>
 
 Then, let's add [swizzle](https://en.wikipedia.org/wiki/Swizzling_(computer_graphics)) operations to the vectors.
-Since this involves a LOT of code to cover all possible arrangements, we will put them in traits and implement them for
-our vectors,
-to improve compile times.
+Since this involves a LOT of functions to cover all possible arrangements,
+we will put them in traits and implement them for our vectors
+to improve compile times for when swizzle is not needed.
 
 ```rust
 pymeta! {
-    // Take advantage of all the Python modules!
+    // Make use of all the Python modules!
     $import itertools;
 
     $for in_dims in range(2, 5):{
@@ -477,8 +478,9 @@ pymeta! {
         }
     }
 }
-
-// Macro expansion:
+```
+```rust
+// Expansion:
 trait Vec2Swizzle {
     fn xx(self) -> Vec2;
     fn xy(self) -> Vec2;
@@ -495,19 +497,7 @@ trait Vec2Swizzle {
     fn xxxx(self) -> Vec4;
     fn xxxy(self) -> Vec4;
     fn xxyx(self) -> Vec4;
-    fn xxyy(self) -> Vec4;
-    fn xyxx(self) -> Vec4;
-    fn xyxy(self) -> Vec4;
-    fn xyyx(self) -> Vec4;
-    fn xyyy(self) -> Vec4;
-    fn yxxx(self) -> Vec4;
-    fn yxxy(self) -> Vec4;
-    fn yxyx(self) -> Vec4;
-    fn yxyy(self) -> Vec4;
-    fn yyxx(self) -> Vec4;
-    fn yyxy(self) -> Vec4;
-    fn yyyx(self) -> Vec4;
-    fn yyyy(self) -> Vec4;
+    // ...
 }
 impl Vec2Swizzle for Vec2 {
     fn xx(self) -> Vec2 {
@@ -537,7 +527,6 @@ trait Vec3Swizzle {
     fn xxx(self) -> Vec3;
     fn xxy(self) -> Vec3;
     fn xxz(self) -> Vec3;
-    fn xyx(self) -> Vec3;
     // ...
 }
 // ... (4k+ more lines)

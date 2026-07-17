@@ -57,28 +57,28 @@ def resolve_includes(
 
         # Determine indentation from characters before INCLUDE!
         prefix = line[: match.start()]
-        if all(c == " " for c in prefix):
-            indent_spaces = len(prefix)
-            indent = " " * indent_spaces
+        # if all(c == " " for c in prefix):
+        #     indent_spaces = len(prefix)
+        #     indent = " " * indent_spaces
 
-            included_lines = [l for l in included_text.splitlines() if "INCLUDE_IGNORE_LINE" not in l]
-            
-            # strip common indent
-            included_lines_common_indent = min(
-                (
-                    len(l) - len(l.lstrip())
-                    for l in included_lines
-                    if l and not l.isspace()
-                ),
-                default=0
-            )
-            if included_lines_common_indent > 0:
-                included_lines = [l.removeprefix(" " * included_lines_common_indent) for l in included_lines]
-
-            included_text = "\n".join(
-                (indent + l if l.strip() else l)
+        included_lines = [l for l in included_text.splitlines() if "INCLUDE_IGNORE_LINE" not in l]
+        
+        # strip common indent
+        included_lines_common_indent = min(
+            (
+                len(l) - len(l.lstrip())
                 for l in included_lines
-            )
+                if l and not l.isspace()
+            ),
+            default=0
+        )
+        if included_lines_common_indent > 0:
+            included_lines = [l.removeprefix(" " * included_lines_common_indent) for l in included_lines]
+
+        included_text = "\n".join(
+            (prefix + l if l.strip() else l)
+            for l in included_lines
+        )
 
         # Preserve anything after INCLUDE!() on the same line
         suffix = line[match.end():]
