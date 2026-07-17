@@ -15,12 +15,12 @@ Seamless **integration with tooling and IDEs**.
 ```rust
 // Generate vector structs with PyMeta inline metaprogramming.
 pymeta! {
-    INCLUDE!("BACKEND_TEST/include/vecs.input.rs")
+    INCLUDE!("BACKEND_TEST/include/vecs_struct.input.rs")
 }
 ```
-> Expanded code from `pymeta!`:
+> **Expanded code from `pymeta!`:**
 > ```rust
-> INCLUDE!("BACKEND_TEST/include/vecs.output.rs")
+> INCLUDE!("BACKEND_TEST/include/vecs_struct.output.rs")
 > ```
 ```rust
 fn main() {
@@ -86,7 +86,7 @@ pymeta! {
     INCLUDE!("BACKEND_TEST/include/vecs_ops.input.rs")
 }
 ```
-> Expansion:
+> **Expansion:**
 > ```rust
 > impl std::ops::Add for Vec2 {
 >     type Output = Vec2;
@@ -115,99 +115,51 @@ pymeta! {
 
 Then, let's add [swizzle](https://en.wikipedia.org/wiki/Swizzling_(computer_graphics)) operations to the vectors.
 Since this involves a LOT of functions to cover all possible arrangements,
-we will put them in traits and implement them for our vectors
-to improve compile times for when swizzle is not needed.
+we will put them in traits and implement them for our vectors to
+improve compile times for when swizzle is not needed.
 
 ```rust
 pymeta! {
-    // Make use of all the Python modules!
-    $import itertools;
-
-    $for in_dims in range(2, 5):{
-        // The `rust()` function coerce its inputs to Rust code and
-        // emit (append) them into the currently active `Tokens` context (more about this later).
-        // If the last token is a "group" (`()`, `[]`, or `{}`), the `Group` object returned out so we can populate them later.
-        // Here we store the returned `Group`s representing the body of our `trait` and `impl`.
-        $trait_body = rust(f~"trait Vec{in_dims}Swizzle {{}}");
-        $impl_body = rust(f~"impl Vec{in_dims}Swizzle for Vec{in_dims} {{}}");
-
-        $for out_dims in range(2, 5):{
-            $out_name = f~"Vec{out_dims}";
-            // Use the product function from the itertools module we imported earlier to generate swizzle arrangements.
-            $for swizzle in itertools.product(*(["xyzw"[:in_dims]] * out_dims)):{
-                // Use the `with` statement to temporarily set a `Tokens` object as the current context.
-                // This means code emitted from within the `with` block are added to that `Tokens` object.
-                // In this case, `trait_body` and `impl_body` are actually `Group` objects,
-                // using `with` on a `Group` is a shorthand for `with group.tokens`.
-                $with trait_body:{
-                    fn $"".join(swizzle)$(self) -> $out_name$;
-                }
-                $with impl_body:{
-                    fn $"".join(swizzle)$(self) -> $out_name$ {
-                        $out_name$ {
-                            $for a, b in zip("xyzw", swizzle):{
-                                $a$: self.$b$,
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
+    INCLUDE!("BACKEND_TEST/include/vecs_swizzle.input.rs")
 }
 ```
-```rust
-// Expansion:
-trait Vec2Swizzle {
-    fn xx(self) -> Vec2;
-    fn xy(self) -> Vec2;
-    fn yx(self) -> Vec2;
-    fn yy(self) -> Vec2;
-    fn xxx(self) -> Vec3;
-    fn xxy(self) -> Vec3;
-    fn xyx(self) -> Vec3;
-    fn xyy(self) -> Vec3;
-    fn yxx(self) -> Vec3;
-    fn yxy(self) -> Vec3;
-    fn yyx(self) -> Vec3;
-    fn yyy(self) -> Vec3;
-    fn xxxx(self) -> Vec4;
-    fn xxxy(self) -> Vec4;
-    fn xxyx(self) -> Vec4;
-    // ...
-}
-impl Vec2Swizzle for Vec2 {
-    fn xx(self) -> Vec2 {
-        Vec2 {
-            x: self.x,
-            y: self.x,
-        }
-    }
-    fn xy(self) -> Vec2 {
-        Vec2 {
-            x: self.x,
-            y: self.y,
-        }
-    }
-    // ...
-}
-trait Vec3Swizzle {
-    fn xx(self) -> Vec2;
-    fn xy(self) -> Vec2;
-    fn xz(self) -> Vec2;
-    fn yx(self) -> Vec2;
-    fn yy(self) -> Vec2;
-    fn yz(self) -> Vec2;
-    fn zx(self) -> Vec2;
-    fn zy(self) -> Vec2;
-    fn zz(self) -> Vec2;
-    fn xxx(self) -> Vec3;
-    fn xxy(self) -> Vec3;
-    fn xxz(self) -> Vec3;
-    // ...
-}
-// ... (4k+ more lines)
-```
+> **Expansion:**
+> ```rust
+> trait Vec2Swizzle {
+>     fn xx(self) -> Vec2;
+>     fn xy(self) -> Vec2;
+>     fn yx(self) -> Vec2;
+>     fn yy(self) -> Vec2;
+>     fn xxx(self) -> Vec3;
+>     fn xxy(self) -> Vec3;
+>     // ...
+>     fn xxxy(self) -> Vec4;
+>     fn xxyx(self) -> Vec4;
+>     // ...
+> }
+> impl Vec2Swizzle for Vec2 {
+>     fn xx(self) -> Vec2 {
+>         Vec2 {
+>             x: self.x,
+>             y: self.x,
+>         }
+>     }
+>     fn xy(self) -> Vec2 {
+>         Vec2 {
+>             x: self.x,
+>             y: self.y,
+>         }
+>     }
+>     // ...
+> }
+> trait Vec3Swizzle {
+>     fn xx(self) -> Vec2;
+>     fn xy(self) -> Vec2;
+>     fn xz(self) -> Vec2;
+>     // ...
+> }
+> // ... (4k+ more lines)
+> ```
 
 </details>
 
@@ -216,7 +168,6 @@ trait Vec3Swizzle {
 <summary>
 
 # Examples
-
 </summary>
 
 ## Build Metadata
@@ -689,8 +640,7 @@ TODO
 TODO
 
 # Attributions
-
-This crate is inspired by the great [repetitive](https://github.com/Noam2Stein/repetitive) crate
-by [Noam2Stein](https://github.com/Noam2Stein).
-<br>
-Check it out if you want to do metaprogramming in a Rust-like language instead of Python!
+- The [repetitive](https://github.com/Noam2Stein/repetitive) crate: initial inspiration for the "inline metaprogramming" syntax.<br>
+  Check it out if you want to do simple metaprogramming in a embedded Rust-like language instead of Python!
+- The [ct_python](https://docs.rs/ct-python) crate: inspiration for running Python at compile time in a proc-macro.
+- The [PyO3](https://pyo3.rs/) project: a major part of this project, without which PyMeta would not be possible.

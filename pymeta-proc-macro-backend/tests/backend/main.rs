@@ -31,6 +31,7 @@ fn tokens_eq(a: TokenStream, b: TokenStream) -> bool {
 fn tokens_to_code(tokens: TokenStream) -> String {
     let file = syn::parse2::<syn::File>(tokens).unwrap();
     prettyplease::unparse(&file)
+    // tokens.to_string()
 }
 
 #[allow(unused)]
