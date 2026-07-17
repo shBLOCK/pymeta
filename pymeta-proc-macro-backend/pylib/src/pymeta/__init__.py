@@ -420,39 +420,36 @@ class Punct(Token):
     ALONE: Final[str] = "alone"
     JOINT: Final[str] = "joint"
 
-    __slots__ = ("chars", "spacing")
-    __match_args__ = ("chars", "spacing")
+    __slots__ = ("char", "spacing")
+    __match_args__ = ("char", "spacing")
 
-    chars: str
+    char: str
     spacing: str
 
-    def __init__(self, chars: str, spacing: str = ALONE, span: Span | None = None):
+    def __init__(self, char: str, spacing: str = ALONE, span: Span | None = None):
         super().__init__(span)
-        for c in chars:
-            if c not in Punct.CHARS:
-                raise ValueError(f"Invalid punctuation char '{c}'")
-        self.chars = chars
+        if len(char) != 1:
+            raise ValueError(f"Punct only accept a single char, got \"{char}\"")
+        if char not in Punct.CHARS:
+            raise ValueError(f"Invalid punctuation char '{char}'")
+        self.char = char
         if spacing not in (Punct.ALONE, Punct.JOINT):
             raise ValueError(f"Invalid punctuation spacing type: \"{spacing}\"")
         self.spacing = spacing
 
     def __str__(self):
-        return self.chars
+        return self.char
 
     def __repr__(self):
-        return f"{self.__class__.__name__}({self.chars!r}, {self.span!r})"
+        return f"{self.__class__.__name__}({self.char!r}, {self.span!r})"
 
     def __eq__(self, other):
         if not isinstance(other, Punct):
             return False
-        return self.chars == other.chars and self.spacing == other.spacing
+        return self.char == other.char and self.spacing == other.spacing
 
     def _append_to_tokenstream(self, stream: _native.TokenStream):
-        if len(self.chars) == 0:
-            raise ValueError("Punct token is empty")
-        for char in self.chars[:-1]:
-            stream.append_punct(char, Punct.JOINT, self.span)
-        stream.append_punct(self.chars[-1], self.spacing, self.span)
+        stream.append_punct(self.char, self.spacing, self.span)
 
 
 class Literal[T](Token, ABC):
