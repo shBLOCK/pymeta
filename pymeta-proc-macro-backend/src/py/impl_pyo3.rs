@@ -103,6 +103,8 @@ pub(crate) fn execute(exe: PyMetaExecutable) -> PyMetaExecutionResult {
 
     let result = Python::attach(|py| -> PyResult<TokenStream> {
         let builtins = py.import("builtins").unwrap();
+        let pymeta = py.import("pymeta").expect("Failed to import pymeta");
+        let pymeta_module_util = py.import("pymeta._.module").expect("Failed to import pymeta._.module");
 
         // compile code
         let module = &exe.main;
@@ -117,11 +119,7 @@ pub(crate) fn execute(exe: PyMetaExecutable) -> PyMetaExecutionResult {
         )?;
 
         // register `pymeta_module`s
-        let PyMetaModuleImporter = py
-            .import("pymeta._.module")
-            .unwrap()
-            .getattr("PyMetaModuleImporter")
-            .unwrap();
+        let PyMetaModuleImporter = pymeta_module_util.getattr("PyMetaModuleImporter").unwrap();
         PyMetaModuleImporter
             .call_method0("kill_all")
             .expect("PyMetaModuleImporter.kill_all() failed");
@@ -145,11 +143,11 @@ pub(crate) fn execute(exe: PyMetaExecutable) -> PyMetaExecutionResult {
             )
             .unwrap();
         let context = PyDict::new(py);
-        let pymeta = py.import("pymeta").expect("Failed to import pymeta");
         let tokens = pymeta.call_method0("Tokens").expect("Failed to construct Tokens");
         tokens.call_method0("__enter__").expect("Tokens.__enter__() failed");
-        py.run(c"import pymeta\nfrom pymeta import *", Some(&context), None)
-            .expect("Failed to import pymeta");
+        pymeta_module_util
+            .call_method1("apply_prelude", (&context,))
+            .expect("Failed to apply prelude");
 
         let result = code.run(Some(&context), None);
 
