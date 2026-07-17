@@ -702,7 +702,9 @@ def lit(value: int, /, *, span: Span | None = None) -> IntLiteral: ...
 @overload
 def lit(value: float, /, *, span: Span | None = None) -> FloatLiteral: ...
 @overload
-def lit[T: Literal](value: T, /, *, span: Span | None = None) -> T: ...
+def lit(value: bool, /, *, span: Span | None = None) -> Ident: ...
+@overload
+def lit[T: Literal | Ident](value: T, /, *, span: Span | None = None) -> T: ...
 # @formatter:on
 
 def lit(
@@ -737,11 +739,21 @@ def lit(
             return IntLiteral(int_value, span=span)
         case (float(float_value), ()):
             return FloatLiteral(float_value, span=span)
+        case (bool(boolean), ()):
+            return Ident("true" if boolean else "false", span)
         case Literal() as literal:
             literal = copy.copy(literal)
             if span is not None:
                 literal.span = span
             return literal
+        case Ident() as ident:
+            if ident.string == "false":
+                boolean = False
+            elif ident.string == "true":
+                boolean = True
+            else:
+                raise ValueError(f"{ident!r} is not a boolean literal identifier")
+            return lit(boolean, span=span)
         case (None, ()):
             raise ValueError("Expected one literal value, got none")
         case (value, (_, _)) if value is not None:
