@@ -6,6 +6,7 @@ use crate::rust_to_py::code_region::{
 use crate::rust_to_py::{CONCAT_MARKER, PY_GLOBAL_OBJS_ARRAY_NAME};
 use crate::utils::diagnostic::{Diagnostic, DiagnosticLevel};
 use crate::utils::escape::*;
+use crate::utils::literal::LiteralRepr;
 use crate::utils::parse_buffer::ParseBuffer;
 use crate::utils::rust_token::{DelimiterEx, PunctEx, Token};
 use crate::utils::span::{CSpan, SpanEx};
@@ -374,83 +375,66 @@ impl PyCodeGen<'_> {
                 }
                 Token::Literal(literal) => {
                     let repr = literal.inner().to_string();
-                    match repr.as_bytes() {
-                        [b'"', ..] | [b'r', b'"', ..] => {
+                    match LiteralRepr::parse(repr.as_str()) {
+                        LiteralRepr::Str(repr) => {
                             self.py.append((r#"StrLiteral("#, literal.span()));
                             self.py.append(PySrcSegment::new(
-                                rust_string_repr_to_python_str_repr(&repr),
+                                rust_string_repr_to_python_str_repr(repr),
                                 literal.span(),
                             ));
                             self.py.append((r#", "str", "#, literal.span()));
                         }
-                        [b'\'', ..] => {
+                        LiteralRepr::Char(repr) => {
                             self.py.append(PySrcSegment::new(
-                                format!(r#"StrLiteral({}, "chr", "#, rust_char_repr_to_python_str_repr(&repr)),
+                                format!(r#"StrLiteral({}, "chr", "#, rust_char_repr_to_python_str_repr(repr)),
                                 literal.span(),
                             ));
                         }
-                        [b'b', b'"', ..] | [b'b', b'r', b'"', ..] => {
+                        LiteralRepr::Bytes(repr) => {
                             self.py.append((r#"BytesLiteral("#, literal.span()));
                             self.py.append(PySrcSegment::new(
-                                rust_bytes_repr_to_python_bytes_repr(&repr),
+                                rust_bytes_repr_to_python_bytes_repr(repr),
                                 literal.span(),
                             ));
                             self.py.append((r#", "bytes", "#, literal.span()));
                         }
-                        [b'b', b'\'', ..] => {
+                        LiteralRepr::Byte(repr) => {
                             self.py.append(PySrcSegment::new(
                                 format!(
                                     r#"BytesLiteral({}, "byte", "#,
-                                    rust_byte_repr_to_python_bytes_repr(&repr)
+                                    rust_byte_repr_to_python_bytes_repr(repr)
                                 ),
                                 literal.span(),
                             ));
                         }
-                        [b'c', ..] => {
+                        LiteralRepr::CStr(repr) => {
                             self.py.append((r#"BytesLiteral("#, literal.span()));
                             self.py.append(PySrcSegment::new(
-                                rust_c_string_repr_to_python_bytes_repr(&repr),
+                                rust_c_string_repr_to_python_bytes_repr(repr),
                                 literal.span(),
                             ));
                             self.py.append((r#", "cstr", "#, literal.span()));
                         }
-                        repr @ [b'0'..=b'9', ..] => {
-                            let is_float = match repr {
-                                [b'0', b'x', ..] => false,
-                                repr if repr.iter().any(|b| matches!(b, b'.' | b'e' | b'E' | b'f')) => true,
-                                _ => false,
-                            };
-
-                            let suffix_i = if is_float {
-                                repr.iter().rposition(|&b| b == b'f')
+                        repr @ (LiteralRepr::Integer { number, suffix } | LiteralRepr::Float { number, suffix }) => {
+                            let cls_name = if let LiteralRepr::Integer { .. } = repr {
+                                "FloatLiteral"
                             } else {
-                                repr.iter().rposition(|&b| matches!(b, b'u' | b'i'))
+                                "IntLiteral"
                             };
-                            let (num, type_obj) = match suffix_i {
-                                Some(i) => unsafe {
-                                    (
-                                        str::from_utf8_unchecked(&repr[..i]),
-                                        str::from_utf8_unchecked(&repr[i..]),
-                                    )
-                                },
-                                None => unsafe { (str::from_utf8_unchecked(repr), "None") },
-                            };
-
-                            let cls_name = if is_float { "FloatLiteral" } else { "IntLiteral" };
+                            let suffix = suffix.unwrap_or("None");
 
                             self.py.append(PySrcSegment::new(
-                                format!(r#"{cls_name}._new("{num}", {num}, {type_obj}, "#),
+                                format!(r#"{cls_name}._new("{number}", {number}, {suffix}, "#),
                                 literal.span(),
                             ));
                         }
-                        _ => panic!("Failed to parse literal: {repr:?}"),
                     };
 
                     self.append_span_obj(literal.span());
                     self.py.append((")", literal.span()));
                     self.py.append(", ");
                 }
-                Token::Group(_) => unreachable!(), // should be handled by RustCode::Group
+                Token::Group(_) => unreachable!("should be handled by RustCode::Group"),
             },
             RustCode::Group { group, code } => {
                 self.py.append(PySrcSegment::new(

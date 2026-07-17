@@ -1,6 +1,7 @@
 pub mod diagnostic;
 pub(crate) mod escape;
 pub(crate) mod indent;
+pub(crate) mod literal;
 pub(crate) mod parse_buffer;
 pub(crate) mod parsing;
 pub(crate) mod rust_token;
