@@ -15,7 +15,7 @@ else:
 from typing import SupportsInt, SupportsFloat, final, Collection, Final, SupportsBytes, MutableSequence, overload, Self, \
     Any, Iterable
 
-from ._ import native
+from ._ import native as _native
 from ._.native import Span
 
 
@@ -63,7 +63,7 @@ class Token(ABC):
         return tokens
 
     @abstractmethod
-    def _append_to_tokenstream(self, stream: native.TokenStream):
+    def _append_to_tokenstream(self, stream: _native.TokenStream):
         ...
 
 
@@ -139,7 +139,7 @@ class Tokens(MutableSequence[Token]):
 
                 # lifetime
                 spacing = Punct.JOINT \
-                    if string[index - 1] == "'" and (index < len(string) and native.is_ident_start(string[index])) \
+                    if string[index - 1] == "'" and (index < len(string) and _native.is_ident_start(string[index])) \
                     else Punct.ALONE
 
                 append(Punct(string[start:index], spacing))
@@ -187,7 +187,7 @@ class Tokens(MutableSequence[Token]):
                             break
                         if (
                             (index + 1) < len(string)
-                            and (string[index + 1] == '.' or native.is_ident_start(string[index + 1]))
+                            and (string[index + 1] == '.' or _native.is_ident_start(string[index + 1]))
                         ):
                             break
                         found_dot = True
@@ -279,10 +279,10 @@ class Tokens(MutableSequence[Token]):
                     index += 1
                 elif parse_punct():
                     pass
-                elif native.is_ident_start(char):
+                elif _native.is_ident_start(char):
                     start = index
                     index += 1
-                    while index < len(string) and native.is_ident_continue(string[index]):
+                    while index < len(string) and _native.is_ident_continue(string[index]):
                         index += 1
                     ident = string[start:index]
                     match ident:
@@ -434,8 +434,8 @@ class Tokens(MutableSequence[Token]):
     def __reversed__(self):
         raise NotImplementedError
 
-    def _to_tokenstream(self) -> native.TokenStream:
-        stream = native.TokenStream()
+    def _to_tokenstream(self) -> _native.TokenStream:
+        stream = _native.TokenStream()
         for token in self:
             token._append_to_tokenstream(stream)
         return stream
@@ -572,7 +572,7 @@ class Group(Token):
     def __exit__(self, *_):
         self.tokens.__exit__()
 
-    def _append_to_tokenstream(self, stream: native.TokenStream):
+    def _append_to_tokenstream(self, stream: _native.TokenStream):
         stream.append_group(self.delimiter, self.tokens._to_tokenstream(), self.span)
 
 
@@ -598,7 +598,7 @@ class Ident(Token):
             return False
         return self.string == other.string
 
-    def _append_to_tokenstream(self, stream: native.TokenStream):
+    def _append_to_tokenstream(self, stream: _native.TokenStream):
         stream.append_ident(self.string, self.span)
 
 
@@ -635,7 +635,7 @@ class Punct(Token):
             return False
         return self.chars == other.chars and self.spacing == other.spacing
 
-    def _append_to_tokenstream(self, stream: native.TokenStream):
+    def _append_to_tokenstream(self, stream: _native.TokenStream):
         if len(self.chars) == 0:
             raise ValueError("Punct token is empty")
         for char in self.chars[:-1]:
@@ -713,7 +713,7 @@ class IntLiteral(Literal[int]):
         return self.value == other.value and self.type == other.type
 
 
-    def _append_to_tokenstream(self, stream: native.TokenStream):
+    def _append_to_tokenstream(self, stream: _native.TokenStream):
         stream.append_int_literal(self.value, str(self.type) if self.type else None, self.span)
 
 
@@ -794,7 +794,7 @@ class FloatLiteral(Literal[float]):
             return False
         return self.value == other.value and self.type == other.type
 
-    def _append_to_tokenstream(self, stream: native.TokenStream):
+    def _append_to_tokenstream(self, stream: _native.TokenStream):
         stream.append_float_literal(self.value, str(self.type) if self.type else None, self.span)
 
 
@@ -832,7 +832,7 @@ class StrLiteral(Literal[str]):
             return False
         return self.type == other.type and self.value == other.value
 
-    def _append_to_tokenstream(self, stream: native.TokenStream):
+    def _append_to_tokenstream(self, stream: _native.TokenStream):
         stream.append_str_literal(self.type, self.value, self.span)
 
 
@@ -866,7 +866,7 @@ class BytesLiteral(Literal[bytes]):
             return False
         return self.type == other.type and self.value == other.value
 
-    def _append_to_tokenstream(self, stream: native.TokenStream):
+    def _append_to_tokenstream(self, stream: _native.TokenStream):
         stream.append_bytes_literal(self.type, self.value, self.span)
 
 
@@ -888,7 +888,7 @@ class BoolLiteral(Literal[bool]):
             return False
         return self.value == other.value
 
-    def _append_to_tokenstream(self, stream: native.TokenStream):
+    def _append_to_tokenstream(self, stream: _native.TokenStream):
         stream.append_ident(self.__str__(), self.span)
 
 
