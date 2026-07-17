@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-import sys
+import copy
 import contextlib
 import weakref
 from abc import ABC, abstractmethod
@@ -697,6 +697,12 @@ def lit(*, cstr: Any, span: Span | None = None) -> StrLiteral: ...
 def lit(*, byte: SupportsBytes | int, span: Span | None = None) -> BytesLiteral: ...
 @overload
 def lit(*, bytes: SupportsBytes, span: Span | None = None) -> BytesLiteral: ...
+@overload
+def lit(value: int, /, *, span: Span | None = None) -> IntLiteral: ...
+@overload
+def lit(value: float, /, *, span: Span | None = None) -> FloatLiteral: ...
+@overload
+def lit[T: Literal](value: T, /, *, span: Span | None = None) -> T: ...
 # @formatter:on
 
 def lit(
@@ -727,6 +733,15 @@ def lit(
             return BytesLiteral(byte.to_bytes(signed=True))
         case (None, ("byte", invalid_byte)):
             raise TypeError(f"{invalid_byte!r} of type {type(invalid_byte)} can't be converted into a byte literal")
+        case (int(int_value), ()):
+            return IntLiteral(int_value, span=span)
+        case (float(float_value), ()):
+            return FloatLiteral(float_value, span=span)
+        case Literal() as literal:
+            literal = copy.copy(literal)
+            if span is not None:
+                literal.span = span
+            return literal
         case (None, ()):
             raise ValueError("Expected one literal value, got none")
         case (value, (_, _)) if value is not None:
