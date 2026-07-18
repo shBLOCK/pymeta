@@ -4,9 +4,8 @@
 
     $for in_dims in range(2, 5):{
         // `Tokens` is a Python class defined by PyMeta that contains some Rust code (a list of Rust code "tokens").
-        // (If you don't know what a Rust code token is, refer to https://doc.rust-lang.org/proc_macro/enum.TokenTree.html)
         // Here we construct temporary `Tokens` objects for the contents of the trait and the impl block.
-        // This way we could generate code to populate both of them at the same time (so we don't have to duplicate code).
+        // This way we could generate code into both of them at the same time (so we don't have to duplicate the codegen code).
         $trait_content = Tokens();
         $impl_content = Tokens();
 
@@ -15,7 +14,7 @@
             // This is an itertools one-liner to generate swizzle arrangements as tuples.
             $for swizzle in itertools.product("xyzw"[:in_dims], repeat=out_dims):{
                 // Use the Python `with` statement to temporarily set a `Tokens` object as the current "Tokens context".
-                // This means Rust code within the `with` block are added to that `Tokens` object.
+                // This means Rust code within the `with` block are added to that `Tokens` object and not emitted directly.
                 $with trait_content:{
                     fn $"".join(swizzle)$(self) -> $out_type$;
                 }
@@ -33,7 +32,7 @@
 
         // Finally, generate the actual trait and impl blocks.
         trait Vec~$in_dims$~Swizzle {
-            $trait_content$ // "Paste in" the content we generated earlier.
+            $trait_content$ // "Paste in" the contents we generated earlier.
         }
         impl Vec~$in_dims$~Swizzle for Vec~$in_dims$ {
             $impl_content$

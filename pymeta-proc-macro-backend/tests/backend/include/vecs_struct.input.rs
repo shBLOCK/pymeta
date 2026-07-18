@@ -1,8 +1,7 @@
 ::quote::quote! { //INCLUDE_IGNORE_LINE
-    // Compile-time Python code are denoted by `$`s. The rest are normal Rust code.
+    // Compile-time Python code is denoted by `$`s. The rest are normal Rust code.
     // A single `$` starts a Python statement.
-    // A `:` followed by `{` starts an "indented code block" in Python.
-    $for dims in range(2, 5):{
+    $for dims in range(2, 5):{ // Indents are insignificant in PyMeta, so braces are required.
         // Rust code inside a Python for-loop will be repeated.
         #[derive(Clone, Copy, Debug, PartialEq)]
         // `$...$` inserts a Python value as Rust code.

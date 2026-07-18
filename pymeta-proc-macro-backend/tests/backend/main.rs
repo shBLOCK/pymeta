@@ -29,9 +29,10 @@ fn tokens_eq(a: TokenStream, b: TokenStream) -> bool {
 }
 
 fn tokens_to_code(tokens: TokenStream) -> String {
-    let file = syn::parse2::<syn::File>(tokens).unwrap();
-    prettyplease::unparse(&file)
-    // tokens.to_string()
+    // TODO: always use the same prettify method (either all prettyplease or all failover)
+    syn::parse2::<syn::File>(tokens.clone())
+        .map(|file| prettyplease::unparse(&file))
+        .unwrap_or_else(|_| tokens.to_string())
 }
 
 #[allow(unused)]

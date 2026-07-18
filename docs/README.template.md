@@ -1,4 +1,4 @@
-PyMeta - Intuitive Python-based metaprogramming for Rust
+PyMeta - Powerful Python-based metaprogramming for Rust
 ---
 
 [![GitHub Repo](https://img.shields.io/badge/GitHub-shBLOCK/pymeta-purple?logo=github)](https://github.com/shBLOCK/pymeta)
@@ -8,7 +8,7 @@ PyMeta - Intuitive Python-based metaprogramming for Rust
 
 Generate and transform Rust code by **running Python code at compile time**.<br>
 **Write Python code alongside normal Rust code** for seamless inline metaprogramming.<br>
-Define intuitive **Python-based proc-macros**.<br>
+Define intuitive **Python-based macros**.<br>
 Seamless **integration with tooling and IDEs**.
 
 # Intro Example: Vector Structs
@@ -44,29 +44,27 @@ fn main() {
 (See below for the next part of this example)
 
 # Features
-
 - Generate & manipulate any Rust code in Python
 - Write metaprogramming Python **alongside** normal Rust code, seamlessly
     - Generate code using any **Python control flow** (`for`, `if`, `match`, `with`, functions, etc.)
 - Dev experience & IDE integration:
     - Preserves `Span` (**source location**) information
         - Tooling and IDEs know where each part of the generated code came from
-        - Report Python errors with **traceback** into Rust source code
+        - Compile-time Python errors give **tracebacks** into Rust source files
 - Writing Python-based macros and proc-macros
     - Much more powerful than `macro_rules!`, much less boilerplate than Rust-based proc-macro
     - No need for a separate proc-macro crate
-- Reusing code: define "PyMeta modules" in normal Rust modules to reuse metaprogramming code and constants
+- Reusing code: define "PyMeta modules" in normal Rust modules to reuse metaprogramming code and data
 
 # Getting Started
 ## Installation
 PyMeta currently only support the official CPython (**>=3.12**) (through [PyO3](https://pyo3.rs/)).
 A CPython installation is required to compile a crate that uses PyMeta.<br>
-There are plans to support embedded Python interpreters (e.g. MicroPython) in the future to remove the dependency on a
-CPython environment.<br>
-PyO3 will use the current virtualenv or the system `python`/`python3` executable by default.<br>
-You can set the env var `PYO3_PYTHON=<path to Python executable>` to use a custom interpreter.
-For more information,
-see [PyO3's documentation on configuring the Python version](https://pyo3.rs/latest/building-and-distribution.html#configuring-the-python-version).
+There are plans to support embedded Python interpreters (e.g. MicroPython) in the future
+to remove the dependency on a CPython environment.<br>
+PyO3 will use the current virtualenv or the system's `python`/`python3` executable by default.<br>
+You can set the env var `PYO3_PYTHON=<path to Python executable>` to use a custom interpreter.<br>
+For more information, see [PyO3's documentation on configuring the Python version](https://pyo3.rs/latest/building-and-distribution.html#configuring-the-python-version).
 ## Usage
 Most features of PyMeta are documented with examples and the code comments in the examples.<br>
 Please read through the examples and their comments to learn to use PyMeta.
@@ -113,10 +111,14 @@ pymeta! {
 > ```
 > </details>
 
+> [!NOTE]
+> The following examples assume that understanding of some Rust proc-macro concepts.<br>
+> Most notably, if you are not familiar with the concept of Rust code "Token"s,
+> please refer to [Rust's TokenTree documentation](https://doc.rust-lang.org/proc_macro/enum.TokenTree.html) while reading the following examples. 
+
 Then, let's add [swizzle](https://en.wikipedia.org/wiki/Swizzling_(computer_graphics)) operations to the vectors.
 Since this involves a LOT of functions to cover all possible arrangements,
-we will put them in traits and implement them for our vectors to
-improve compile times for when swizzle is not needed.
+we will put them in traits to not pollute the namespace when swizzles are not needed.
 
 ```rust
 pymeta! {
@@ -158,90 +160,50 @@ pymeta! {
 >     fn xz(self) -> Vec2;
 >     // ...
 > }
-> // ... (4k+ more lines)
+> // ... (4k+ lines total)
 > ```
 
 </details>
 
+> [!WARNING]
+> The following examples may be outdated. They are being reworked.
 
 <details open>
 <summary>
 
-# Examples
+# More Examples
 </summary>
 
-## Build Metadata
-
-```rust
-// Note that due to rustc's caching, this may not update on every build,
-// unless you do a `cargo clean` beforehand.
-const BUILD_TIME: &str = pymeta! {
-    $from datetime import datetime;
-    // By default, a string is turned into Rust code by parsing their content.
-    // Here we use `lit()` to make a string literal instead.
-    $lit(str(datetime.now()))$
-};
-
-// Macro expansion:
-"2026-02-16 14:38:05.633646"
-```
-
-## Include data from external file
-
-```rust
-// Better ways to define custom macros and even proc-macros using Python will be added in the future.
-// For now, the `macro_metavar_expr` nightly feature is required.
-#![feature(macro_metavar_expr)]
-macro_rules! module_id {
-    ($name:literal) => {
-        pymeta::pymeta! {
-            $ $import json;
-            $ $name = $name;
-            // TODO: The working directory of the macro is currently not defined and may not be consistent.
-            // This will be improved in the future, but for now, the CWD is most likely the project root.
-            $ $json.load(open(f~"examples/{name}.json"))["id"]$ $
-        }
-    };
-}
-
-const FOO_MODULE_ID: u32 = module_id!("foo");
-
-// Macro expansion:
-42
-```
-
-## Generating Data
-
+## Generating data
 ```rust
 // Use the `f32` function and alike to make a post-fixed number literal.
+// (This is a contrived example for demonstration, as Rust std already have the `f32::GOLDEN_RATIO` constant)
 let GOLDEN_RATIO = pymeta!($f32((1 + 5 ** 0.5) / 2)$);
 
-// Macro expansion:
+// Expansion:
 1.618034f32
 ```
-
 ```rust
-pymeta! {
-    $from math import *;
-    $N = 256;
-    // `Token.join()` works like `str.join()`.
-    const SIN_TABLE: [f32; $N$] = [$Punct(',').join(sin(i / N * tau) for i in range(N))$];
-}
+INCLUDE!("BACKEND_TEST/include/sin_table.input.rs")
 // or with numpy:
-pymeta! {
-    $import numpy as np;
-    $from math import tau;
-    $N = 256;
-    const SIN_TABLE: [f32; $N$] = [$Punct(',').join(np.sin(np.linspace(0, tau, N, endpoint=False)))$];
-}
+INCLUDE!("BACKEND_TEST/include/sin_table_np.input.rs")
 
-// Macro expansion:
-const SIN_TABLE: [f32; 256] = [0.0, 0.024541228522912288, 0.049067674327418015, 0.07356456359966743, 0.0980171403295606, 0.1224106751992162, 0.14673047445536175, 0.17096188876030122, 0.19509032201612825, 0.2191012401568698, 0.24298017990326387, 0.26671275747489837, 0.29028467725446233, 0.3136817403988915, 0.33688985339222005, 0.3598950365349881, 0.3826834323650898, 0.40524131400498986, 0.4275550934302821, 0.44961132965460654, 0.47139673682599764, 0.49289819222978404, 0.5141027441932217, 0.5349976198870972, 0.5555702330196022, 0.5758081914178453, 0.5956993044924334, 0.6152315905806268, 0.6343932841636455, 0.6531728429537768, 0.6715589548470183, 0.6895405447370668, 0.7071067811865476, 0.7242470829514669, 0.7409511253549591, 0.7572088465064846, 0.7730104533627369, 0.7883464276266062, 0.8032075314806448, 0.8175848131515837, 0.8314696123025452, 0.844853565249707, 0.8577286100002721, 0.8700869911087113, 0.8819212643483549, 0.8932243011955153, 0.9039892931234433, 0.9142097557035307, 0.9238795325112867, 0.9329927988347388, 0.9415440651830208, 0.9495281805930367, 0.9569403357322089, 0.9637760657954398, 0.970031253194544, 0.9757021300385286, 0.9807852804032304, 0.9852776423889412, 0.989176509964781, 0.99247953459871, 0.9951847266721968, 0.9972904566786902, 0.9987954562051724, 0.9996988186962042, 1.0, 0.9996988186962042, 0.9987954562051724, 0.9972904566786902, 0.9951847266721969, 0.99247953459871, 0.989176509964781, 0.9852776423889412, 0.9807852804032304, 0.9757021300385286, 0.970031253194544, 0.9637760657954398, 0.9569403357322089, 0.9495281805930367, 0.9415440651830208, 0.9329927988347388, 0.9238795325112867, 0.9142097557035307, 0.9039892931234434, 0.8932243011955152, 0.881921264348355, 0.8700869911087115, 0.8577286100002721, 0.8448535652497072, 0.8314696123025453, 0.8175848131515837, 0.8032075314806449, 0.7883464276266063, 0.7730104533627371, 0.7572088465064847, 0.740951125354959, 0.7242470829514669, 0.7071067811865476, 0.689540544737067, 0.6715589548470186, 0.6531728429537766, 0.6343932841636455, 0.6152315905806269, 0.5956993044924335, 0.5758081914178454, 0.5555702330196022, 0.5349976198870972, 0.5141027441932218, 0.49289819222978415, 0.4713967368259978, 0.4496113296546069, 0.42755509343028203, 0.4052413140049899, 0.3826834323650899, 0.35989503653498833, 0.33688985339222033, 0.3136817403988914, 0.2902846772544624, 0.2667127574748985, 0.24298017990326407, 0.21910124015687005, 0.1950903220161286, 0.17096188876030122, 0.1467304744553618, 0.12241067519921635, 0.09801714032956083, 0.07356456359966773, 0.049067674327417966, 0.024541228522912326, 0.00000000000000012246467991473532, -0.02454122852291208, -0.049067674327417724, -0.0735645635996675, -0.09801714032956059, -0.1224106751992161, -0.14673047445536158, -0.17096188876030097, -0.19509032201612836, -0.2191012401568698, -0.24298017990326382, -0.26671275747489825, -0.2902846772544621, -0.3136817403988912, -0.3368898533922201, -0.3598950365349881, -0.38268343236508967, -0.4052413140049897, -0.4275550934302818, -0.44961132965460665, -0.47139673682599764, -0.4928981922297839, -0.5141027441932216, -0.5349976198870969, -0.555570233019602, -0.5758081914178453, -0.5956993044924332, -0.6152315905806267, -0.6343932841636453, -0.6531728429537765, -0.6715589548470184, -0.6895405447370668, -0.7071067811865475, -0.7242470829514668, -0.7409511253549589, -0.7572088465064842, -0.7730104533627367, -0.7883464276266059, -0.803207531480645, -0.8175848131515838, -0.8314696123025452, -0.8448535652497071, -0.857728610000272, -0.8700869911087113, -0.8819212643483549, -0.8932243011955152, -0.9039892931234431, -0.9142097557035305, -0.9238795325112865, -0.932992798834739, -0.9415440651830208, -0.9495281805930367, -0.9569403357322088, -0.9637760657954398, -0.970031253194544, -0.9757021300385285, -0.9807852804032303, -0.9852776423889411, -0.9891765099647809, -0.9924795345987101, -0.9951847266721969, -0.9972904566786902, -0.9987954562051724, -0.9996988186962042, -1.0, -0.9996988186962042, -0.9987954562051724, -0.9972904566786902, -0.9951847266721969, -0.9924795345987101, -0.9891765099647809, -0.9852776423889412, -0.9807852804032304, -0.9757021300385286, -0.970031253194544, -0.96377606579544, -0.9569403357322089, -0.9495281805930368, -0.9415440651830209, -0.9329927988347391, -0.9238795325112866, -0.9142097557035306, -0.9039892931234433, -0.8932243011955153, -0.881921264348355, -0.8700869911087115, -0.8577286100002722, -0.8448535652497072, -0.8314696123025455, -0.8175848131515839, -0.8032075314806453, -0.7883464276266061, -0.7730104533627369, -0.7572088465064846, -0.7409511253549591, -0.724247082951467, -0.7071067811865477, -0.6895405447370672, -0.6715589548470187, -0.6531728429537771, -0.6343932841636459, -0.6152315905806274, -0.5956993044924332, -0.5758081914178452, -0.5555702330196022, -0.5349976198870973, -0.5141027441932219, -0.49289819222978426, -0.4713967368259979, -0.449611329654607, -0.42755509343028253, -0.4052413140049904, -0.3826834323650904, -0.359895036534988, -0.33688985339222, -0.3136817403988915, -0.2902846772544625, -0.2667127574748986, -0.24298017990326418, -0.21910124015687016, -0.19509032201612872, -0.17096188876030177, -0.1467304744553624, -0.12241067519921603, -0.0980171403295605, -0.07356456359966741, -0.04906767432741809, -0.024541228522912448];
+// Expansion:
+const SIN_TABLE: [f32; 256] = [0.0, 0.024541228522912288, /*...*/ -0.04906767432741809, -0.024541228522912448];
+```
+
+## Defining simple PyMeta macros (`#[pymeta_func]`)
+```rust
+//TODO
+#[pymeta_func()]
+a! {
+    
+}
 ```
 
 ## Semi-quoting
-
 ```rust
+//TODO
 pymeta! {
     // The `Tokens` class can be used for semi-quoting.
     // (A dedicated semi-quoting expression syntax may be added in the future.)
@@ -270,6 +232,44 @@ impl Hello for MyStruct {
     }
 }
 ```
+
+## Using data from external files
+```rust
+// Better ways to define custom macros and even proc-macros using Python will be added in the future.
+// For now, the `macro_metavar_expr` nightly feature is required.
+#![feature(macro_metavar_expr)]
+macro_rules! module_id {
+    ($name:literal) => {
+        pymeta::pymeta! {
+            $$import json;
+            $$name = $name;
+            // TODO: The working directory of the macro is currently not defined and may not be consistent.
+            // This will be improved in the future, but for now, the CWD is most likely the project root.
+            $$json.load(open(f~"examples/{name}.json"))["id"]$$
+        }
+    };
+}
+
+const FOO_MODULE_ID: u32 = module_id!("foo");
+
+// Macro expansion:
+42
+```
+
+## Reusing PyMeta code (`#[pymeta_module]`)
+```rust
+//TODO
+#[pymeta_module]
+a! {
+    
+}
+
+// Usage
+pymeta! {
+    
+}
+```
+
 
 </details>
 
@@ -307,25 +307,25 @@ macro_rules! like_rust {
     // For now, semi-quoting using `with Token():` can achieve a similar effect as a custom proc-macro.
     ($($input:tt)*) => {
         pymeta::pymeta! {
-            $ $with Tokens() as input:{
+            $$with Tokens() as input:{
                 $($input)*
             }
 
-            $ $WORDS = {"so", "like", "right", "totally", "something", "dude", "bro", "man", "just", "yo", "lol", "yeah", "uh", "um", "ah", "plz", "that", "or", "and", "then", "first", "things", "damn", "this", "thing"};
+            $$WORDS = {"so", "like", "right", "totally", "something", "dude", "bro", "man", "just", "yo", "lol", "yeah", "uh", "um", "ah", "plz", "that", "or", "and", "then", "first", "things", "damn", "this", "thing"};
 
-            $ $def process(tokens: Tokens):{
-                $ $for token in tokens:{
-                    $ $if isinstance(token, Ident) and token.string.lower() in WORDS:{
-                        $ $continue;
+            $$def process(tokens: Tokens):{
+                $$for token in tokens:{
+                    $$if isinstance(token, Ident) and token.string.lower() in WORDS:{
+                        $$continue;
                     }
-                    $ $if isinstance(token, Group):{
-                        $ $token.tokens = Tokens(items=process(token.tokens));
+                    $$if isinstance(token, Group):{
+                        $$token.tokens = Tokens(items=process(token.tokens));
                     }
-                    $ $yield token;
+                    $$yield token;
                 }
             }
 
-            $ $Tokens(items=process(input))$ $
+            $$Tokens(items=process(input))$$
         }
     };
 }
@@ -363,10 +363,10 @@ fn main() {
 macro_rules! vibe {
     ($prompt:tt) => {
         pymeta::pymeta! {
-            $ $from openai import OpenAI;
-            $ $client = OpenAI(base_url="http://127.0.0.1:52625/v1", api_key="");
+            $$from openai import OpenAI;
+            $$client = OpenAI(base_url="http://127.0.0.1:52625/v1", api_key="");
 
-            $ $response = client.chat.completions.create(
+            $$response = client.chat.completions.create(
                 model="qwen3-it:4b",
                 messages=[
                     {"role": "system", "content": "You are a Rust code generator. Generate Rust code according to user prompt. "
@@ -380,17 +380,17 @@ macro_rules! vibe {
                 stream=True
             );
 
-            $ $result = [];
-            $ $for chunk in response:{
-                $ $chunk = chunk.choices[0].delta.content;
-                $ $if chunk:{
-                    $ $result.append(chunk);
-                    $ $print(chunk, end="", flush=True);
+            $$result = [];
+            $$for chunk in response:{
+                $$chunk = chunk.choices[0].delta.content;
+                $$if chunk:{
+                    $$result.append(chunk);
+                    $$print(chunk, end="", flush=True);
                 }
             }
-            $ $result = "".join(result);
+            $$result = "".join(result);
 
-            $ $"\n".join(line for line in result.splitlines() if not line.startswith("```"))$ $
+            $$"\n".join(line for line in result.splitlines() if not line.startswith("```"))$$
         }
     };
 }
@@ -594,50 +594,22 @@ impl Vec4 {
 
 </details>
 
-# Deep Dive (OUTDATED!!! TODO: UPDATE)
+<details>
+<summary>
 
-This section covers how this crate works under the hood.
-If you just want to use this crate, this section is probably not very relevant.
+# Advanced Usage
+</summary>
 
-### Step 1: Parsing input Rust code to "Code Regions"
+Many of PyMeta's features are still undocumented at this point,
+especially the Python APIs of the `pymeta` Python module.<br>
+(Many of the objects and functions, such as `Tokens`, `Punct`, `lit()` and `f32()` also come from the `pymeta` module.)<br>
 
-The input is parsed into 4 types of "Code Regions".
-This step can be thought of as the "lexing" step in compilers.
+The most important parts has been explained in the examples,
+but for more advanced usage, like constructing arbitrary tokens programmatically or parsing them,
+more of the Python API is needed.<br>
+If you are feeling adventurous, take a look at the **Python source code of the `pymeta` module: [pymeta-proc-macro-backend/pylib/src/pymeta/\_\_init\_\_.py](pymeta-proc-macro-backend/pylib/src/pymeta/__init__.py)**
 
-- [CodeRegion::RustCode](crate::rust_to_py::code_region::CodeRegion::RustCode): An snippet of normal Rust code.
-  This may contain inline Python expressions, but not Python statements.
-  This will be converted into a single `rust()` call in the generated Python code.
-- [CodeRegion::RustCodeWithBlock](crate::rust_to_py::code_region::CodeRegion::RustCodeWithBlock): A RustCode followed by
-  a code block.
-  This will be converted into a `with rust():` statement in the generated Python code.
-- [CodeRegion::PyStmt](crate::rust_to_py::code_region::CodeRegion::PyStmt): A Python statement, e.g. `a = 42`,
-  `print("Hello World")`.
-- [CodeRegion::PyStmtWithIndentBlock](crate::rust_to_py::code_region::CodeRegion::PyStmtWithIndentBlock): A Python
-  statement with an indented code block, e.g. `for`, `if`.
-
-This step also handles escaped markers (`<$>`), un-escaping them.
-<br>
-See the docs on the [CodeRegion](crate::rust_to_py::code_region::CodeRegion) struct for more details.
-
-### Step 2: Python Codegen
-
-Here, code regions are turned into Python code one by one.
-This step mostly happens in the [PyCodeGen](crate::rust_to_py::py_code_gen::PyCodeGen) struct.
-<br>
-Python source code is represented by the [PySource](crate::rust_to_py::py_source::PySource) struct,
-which contains [PySegment](crate::rust_to_py::py_source::PySegment)s each containing a source code String
-and optionally a Span for the Rust code that generated this PySegment.
-<br>
-During this step, data that will be passed to the Python code also gets generated.
-These data are packed together with the PySource into a [PyMetaModule](crate::rust_to_py::py_code_gen::PyMetaModule).
-
-### Step 3: Python Execution
-
-TODO
-
-### Step 4: Collecting Results / Reporting Exceptions
-
-TODO
+</details>
 
 # Attributions
 - The [repetitive](https://github.com/Noam2Stein/repetitive) crate: initial inspiration for the "inline metaprogramming" syntax.<br>
