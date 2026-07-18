@@ -270,7 +270,7 @@ class Tokens(MutableSequence[Token]):
 
 @final
 class TokensView(Sequence[Token]):
-    __slots__ = ("_referent", "_pos", "_end")
+    __slots__ = ("_referent", "_pos", "_end", "__weakref__")
 
     def __init__(self, referent: Tokens, pos: int | None, end: int | None):
         self._referent = referent
