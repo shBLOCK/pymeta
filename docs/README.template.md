@@ -594,7 +594,7 @@ impl Vec4 {
 
 </details>
 
-<details>
+<details open>
 <summary>
 
 # Advanced Usage
