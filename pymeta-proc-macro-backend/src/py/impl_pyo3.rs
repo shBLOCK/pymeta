@@ -5,16 +5,24 @@ use crate::py::error::{FrameSummary, PythonError, SourceLocation, StackSummary};
 use crate::rust_to_py::PY_GLOBAL_OBJS_ARRAY_NAME;
 use crate::rust_to_py::meta::stmt::ImportMetaStmt;
 use crate::rust_to_py::py_code_gen::{PyMetaExecutable, PyObj};
+use crate::utils::escape::{
+    unescape_rust_byte_literal, unescape_rust_bytes_literal, unescape_rust_c_str_literal, unescape_rust_char_literal,
+    unescape_rust_str_literal,
+};
+use crate::utils::literal::{
+    BytesLiteralKind, BytesLiteralRepr, LiteralRepr, NumLiteralKind, NumLiteralRepr, StrLiteralKind, StrLiteralRepr,
+};
 use crate::utils::span::CSpan;
 use either::Either;
-use proc_macro2::TokenStream;
-use pyo3::IntoPyObjectExt;
-use pyo3::exceptions::PySyntaxError;
+use proc_macro2::{Delimiter, Spacing, TokenStream, TokenTree};
+use pyo3::exceptions::{PySyntaxError, PyValueError};
 use pyo3::ffi::c_str;
 use pyo3::prelude::*;
-use pyo3::types::{PyCode, PyCodeInput, PyCodeMethods, PyDict, PyTraceback, PyTuple};
+use pyo3::types::{PyBytes, PyCode, PyCodeInput, PyCodeMethods, PyDict, PyInt, PyList, PyTraceback, PyTuple};
+use pyo3::{IntoPyObjectExt, PyTypeInfo, intern};
 use std::ffi::CString;
 use std::rc::Rc;
+use std::str::FromStr;
 use std::sync::OnceLock;
 
 macro_rules! include_cstr {
@@ -277,8 +285,112 @@ impl<'py> IntoPyObject<'py> for CSpan {
     }
 }
 
+fn token_stream_to_pymeta_tokens(py: Python, token_stream: TokenStream) -> PyResult<Bound<PyAny>> {
+    let pymeta = py.import(intern!(py, "pymeta"))?;
+    let py_tokens = PyList::empty(py);
+    for token in token_stream {
+        py_tokens.append(match token {
+            TokenTree::Ident(ident) => {
+                pymeta.call_method1(intern!(py, "Ident"), (ident.to_string(), CSpan::from(ident.span())))
+            }
+            TokenTree::Punct(punct) => {
+                let spacing = match punct.spacing() {
+                    Spacing::Alone => intern!(py, "alone"),
+                    Spacing::Joint => intern!(py, "joint"),
+                };
+                pymeta.call_method1(
+                    intern!(py, "Punct"),
+                    (punct.as_char(), spacing, CSpan::from(punct.span())),
+                )
+            }
+            TokenTree::Literal(literal) => {
+                let repr = literal.to_string();
+                let repr = LiteralRepr::parse(&repr);
+                match repr {
+                    LiteralRepr::Str(StrLiteralRepr { kind, repr }) => pymeta.call_method1(
+                        intern!(py, "StrLiteral"),
+                        match kind {
+                            StrLiteralKind::Str => {
+                                (unescape_rust_str_literal(repr).into_pyobject(py)?, intern!(py, "str"))
+                            }
+                            StrLiteralKind::Char => {
+                                (unescape_rust_char_literal(repr).into_pyobject(py)?, intern!(py, "chr"))
+                            }
+                        },
+                    ),
+                    LiteralRepr::Bytes(BytesLiteralRepr { kind, repr }) => pymeta.call_method1(
+                        intern!(py, "BytesLiteral"),
+                        match kind {
+                            BytesLiteralKind::Bytes => (
+                                PyBytes::new(py, &unescape_rust_bytes_literal(repr)),
+                                intern!(py, "bytes"),
+                            ),
+                            BytesLiteralKind::Byte => (
+                                PyBytes::new(py, &[unescape_rust_byte_literal(repr)]),
+                                intern!(py, "byte"),
+                            ),
+                            BytesLiteralKind::CStr => (
+                                PyBytes::new(py, &unescape_rust_c_str_literal(repr)),
+                                intern!(py, "cstr"),
+                            ),
+                        },
+                    ),
+                    LiteralRepr::Num(NumLiteralRepr { kind, num, suffix }) => {
+                        let class = match kind {
+                            NumLiteralKind::Int => pymeta.getattr(intern!(py, "IntLiteral"))?,
+                            NumLiteralKind::Float => pymeta.getattr(intern!(py, "FloatLiteral"))?,
+                        };
+                        let type_obj = if let Some(suffix) = suffix {
+                            pymeta.getattr(suffix).map_err(|e| {
+                                let err = PyValueError::new_err(format!("Invalid number literal suffix: {suffix}"));
+                                err.set_cause(py, Some(e));
+                                err
+                            })?
+                        } else {
+                            py.None().into_bound(py)
+                        };
+
+                        let value = match kind {
+                            NumLiteralKind::Int => PyInt::type_object(py).call1((num.trim_end_matches('_'), 0))?,
+                            NumLiteralKind::Float => {
+                                let num_no_underscore = num.replace('_', "");
+                                f64::from_str(&num_no_underscore)
+                                    .map_err(|e| {
+                                        PyValueError::new_err(format!("Failed to parse float literal\"{num}\": {e:?}"))
+                                    })?
+                                    .into_bound_py_any(py)?
+                            }
+                        };
+                        class.call_method1(intern!(py, "_new"), (num, value, type_obj, CSpan::from(literal.span())))
+                    }
+                }
+            }
+            TokenTree::Group(group) => {
+                let delimiter = match group.delimiter() {
+                    Delimiter::Parenthesis => intern!(py, "()"),
+                    Delimiter::Brace => intern!(py, "{}"),
+                    Delimiter::Bracket => intern!(py, "[]"),
+                    Delimiter::None => intern!(py, ""),
+                };
+                pymeta.call_method1(
+                    intern!(py, "Group"),
+                    (
+                        delimiter,
+                        token_stream_to_pymeta_tokens(py, group.stream())?,
+                        CSpan::from(group.span()),
+                    ),
+                )
+            }
+        }?)?;
+    }
+    Ok(pymeta
+        .getattr(intern!(py, "Tokens"))?
+        .call_method1(intern!(py, "_new"), (py_tokens,))?)
+}
+
 #[pymodule]
 mod pymeta_native {
+    use crate::py::impl_pyo3::token_stream_to_pymeta_tokens;
     use crate::utils::span::CSpan;
     use proc_macro2::{Delimiter, Group, Ident, Literal, Punct, Spacing, Span, TokenStream, TokenTree};
     #[allow(unused_imports)]
@@ -289,6 +401,7 @@ mod pymeta_native {
     use std::iter;
     use std::path::PathBuf;
     use std::rc::Rc;
+    use std::str::FromStr;
     use unicode_ident::{is_xid_continue, is_xid_start};
 
     #[pyfunction]
@@ -410,7 +523,7 @@ mod pymeta_native {
                 tokens
                     .0
                     .take()
-                    .ok_or(PyValueError::new_err("The given TokenStream has already been consumed"))?,
+                    .ok_or_else(|| PyValueError::new_err("The given TokenStream has already been consumed"))?,
             );
             self.append_token(group.into(), span)
         }
@@ -556,6 +669,22 @@ mod pymeta_native {
                 }
             };
             self.append_token(literal.into(), span)
+        }
+
+        #[allow(clippy::wrong_self_convention)]
+        fn to_pymeta_tokens<'py>(&mut self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
+            let token_stream = self
+                .0
+                .take()
+                .ok_or_else(|| PyValueError::new_err("This TokenStream has already been consumed"))?;
+            token_stream_to_pymeta_tokens(py, token_stream)
+        }
+
+        #[staticmethod]
+        fn parse(source_code: &str) -> PyResult<Self> {
+            let token_stream =
+                TokenStream::from_str(source_code).map_err(|e| PyValueError::new_err(format!("{e:?}")))?;
+            Ok(Self(Some(token_stream)))
         }
     }
 

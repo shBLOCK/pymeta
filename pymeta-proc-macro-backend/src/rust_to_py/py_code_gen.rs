@@ -6,7 +6,9 @@ use crate::rust_to_py::code_region::{
 use crate::rust_to_py::{CONCAT_MARKER, PY_GLOBAL_OBJS_ARRAY_NAME};
 use crate::utils::diagnostic::{Diagnostic, DiagnosticLevel};
 use crate::utils::escape::*;
-use crate::utils::literal::LiteralRepr;
+use crate::utils::literal::{
+    BytesLiteralKind, BytesLiteralRepr, LiteralRepr, NumLiteralKind, NumLiteralRepr, StrLiteralKind, StrLiteralRepr,
+};
 use crate::utils::parse_buffer::ParseBuffer;
 use crate::utils::rust_token::{DelimiterEx, PunctEx, Token};
 use crate::utils::span::{CSpan, SpanEx};
@@ -376,55 +378,57 @@ impl PyCodeGen<'_> {
                 Token::Literal(literal) => {
                     let repr = literal.inner().to_string();
                     match LiteralRepr::parse(repr.as_str()) {
-                        LiteralRepr::Str(repr) => {
+                        LiteralRepr::Str(StrLiteralRepr { kind, repr }) => {
                             self.py.append((r#"StrLiteral("#, literal.span()));
                             self.py.append(PySrcSegment::new(
-                                rust_string_repr_to_python_str_repr(repr),
+                                match kind {
+                                    StrLiteralKind::Str => {
+                                        unescape_rust_str_literal(repr).as_ref().new_py_literal_repr()
+                                    }
+                                    StrLiteralKind::Char => unescape_rust_char_literal(repr).new_py_literal_repr(),
+                                },
                                 literal.span(),
                             ));
-                            self.py.append((r#", "str", "#, literal.span()));
-                        }
-                        LiteralRepr::Char(repr) => {
-                            self.py.append(PySrcSegment::new(
-                                format!(r#"StrLiteral({}, "chr", "#, rust_char_repr_to_python_str_repr(repr)),
+                            self.py.append((
+                                match kind {
+                                    StrLiteralKind::Str => r#", "str", "#,
+                                    StrLiteralKind::Char => r#", "chr", "#,
+                                },
                                 literal.span(),
                             ));
                         }
-                        LiteralRepr::Bytes(repr) => {
+                        LiteralRepr::Bytes(BytesLiteralRepr { kind, repr }) => {
                             self.py.append((r#"BytesLiteral("#, literal.span()));
                             self.py.append(PySrcSegment::new(
-                                rust_bytes_repr_to_python_bytes_repr(repr),
+                                match kind {
+                                    BytesLiteralKind::Bytes => {
+                                        unescape_rust_bytes_literal(repr).as_ref().new_py_literal_repr()
+                                    }
+                                    BytesLiteralKind::Byte => unescape_rust_byte_literal(repr).new_py_literal_repr(),
+                                    BytesLiteralKind::CStr => {
+                                        unescape_rust_c_str_literal(repr).as_ref().new_py_literal_repr()
+                                    }
+                                },
                                 literal.span(),
                             ));
-                            self.py.append((r#", "bytes", "#, literal.span()));
-                        }
-                        LiteralRepr::Byte(repr) => {
-                            self.py.append(PySrcSegment::new(
-                                format!(
-                                    r#"BytesLiteral({}, "byte", "#,
-                                    rust_byte_repr_to_python_bytes_repr(repr)
-                                ),
+                            self.py.append((
+                                match kind {
+                                    BytesLiteralKind::Bytes => r#", "bytes", "#,
+                                    BytesLiteralKind::Byte => r#", "byte", "#,
+                                    BytesLiteralKind::CStr => r#", "cstr", "#,
+                                },
                                 literal.span(),
                             ));
                         }
-                        LiteralRepr::CStr(repr) => {
-                            self.py.append((r#"BytesLiteral("#, literal.span()));
-                            self.py.append(PySrcSegment::new(
-                                rust_c_string_repr_to_python_bytes_repr(repr),
-                                literal.span(),
-                            ));
-                            self.py.append((r#", "cstr", "#, literal.span()));
-                        }
-                        repr @ (LiteralRepr::Integer { number, suffix } | LiteralRepr::Float { number, suffix }) => {
-                            let cls_name = if let LiteralRepr::Integer { .. } = repr {
-                                "FloatLiteral"
-                            } else {
-                                "IntLiteral"
+                        LiteralRepr::Num(NumLiteralRepr { kind, num, suffix }) => {
+                            let cls_name = match kind {
+                                NumLiteralKind::Int => "IntLiteral",
+                                NumLiteralKind::Float => "FloatLiteral",
                             };
                             let suffix = suffix.unwrap_or("None");
-
+                            let py_num = num.replace('_', "");
                             self.py.append(PySrcSegment::new(
-                                format!(r#"{cls_name}._new("{number}", {number}, {suffix}, "#),
+                                format!(r#"{cls_name}._new("{num}", {py_num}, {suffix}, "#),
                                 literal.span(),
                             ));
                         }

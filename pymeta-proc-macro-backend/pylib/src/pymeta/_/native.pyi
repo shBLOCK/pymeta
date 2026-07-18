@@ -1,5 +1,7 @@
 import pathlib
 
+from pymeta import Tokens
+
 
 def is_ident_start(string: str) -> bool: ...
 
@@ -51,6 +53,11 @@ class TokenStream:
     def append_str_literal(self, type: str, value: str, span: Span | None): ...
 
     def append_bytes_literal(self, type: bytes, value: str, span: Span | None): ...
+
+    def to_pymeta_tokens(self) -> Tokens: ...
+
+    @staticmethod
+    def parse(source_code: str) -> TokenStream: ...
 
 
 def tracked_path(path: pathlib.Path) -> None: ...

@@ -161,8 +161,19 @@ class Tokens(MutableSequence[Token]):
 
         return _results
 
+    @staticmethod
+    def parse(source_code: str) -> Tokens:
+        return _native.TokenStream.parse(source_code).to_pymeta_tokens()
+
+
     _tokens: list[Token]
     _views: weakref.WeakSet[TokensView] | None
+
+    @classmethod
+    def _new(cls, tokens: list[Token]):
+        obj = cls.__new__(cls)
+        obj._tokens = tokens
+        return obj
 
     def __init__(
         self,
