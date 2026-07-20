@@ -88,8 +88,12 @@ fn main() {
 
 # Getting Started
 ## Installation
+Add `pymeta` as a dependency in your `Cargo.toml` file.<br>
+**If you are on nightly Rust, it is highly recommended to enable PyMeta's `nightly_diagnostic` feature
+so you get much better diagnostics outputs (error messages).**
+
 PyMeta currently only support the official CPython (**>=3.12**) (through [PyO3](https://pyo3.rs/)).
-A CPython installation is required to compile a crate that uses PyMeta.<br>
+So a CPython installation is required to compile a crate that uses PyMeta.<br>
 There are plans to support embedded Python interpreters (e.g. MicroPython) in the future
 to remove the dependency on a CPython environment.<br>
 PyO3 will use the current virtualenv or the system's `python`/`python3` executable by default.<br>
@@ -685,38 +689,85 @@ A workaround for now is to put spaces around the `$` symbols.
 
 ## Using data from external files
 ```rust
-// Better ways to define custom macros and even proc-macros using Python will be added in the future.
-// For now, the `macro_metavar_expr` nightly feature is required.
-#![feature(macro_metavar_expr)]
-macro_rules! module_id {
-    ($name:literal) => {
-        pymeta::pymeta! {
-            $$import json;
-            $$name = $name;
-            // TODO: The working directory of the macro is currently not defined and may not be consistent.
-            // This will be improved in the future, but for now, the CWD is most likely the project root.
-            $$json.load(open(f~"examples/{name}.json"))["id"]$$
-        }
-    };
+#[pymeta_func(name: str)]
+#[public(crate)]
+item_id! {
+    import os;
+    import json;
+    from pathlib import Path;
+    
+    // You can get the path (Python `pathlib.Path`) to the Rust file that called the macro through `Span.call_site()`.
+    // This can be used to achieve a similar effect as the builtin `include!()` macro:
+    dir = Span.call_site().local_file().parent;
+    // However, IDE support for `Span.local_file()` is not great currently.
+    // So currently it's suggested to use a path relative to the cargo package root instead,
+    // using the `CARGO_MANIFEST_DIR` environment variable to get the absolute path to the package root.
+    dir = Path(os.getenv("CARGO_MANIFEST_DIR"));
+    
+    file = dir / "data/items" / f~"{name}.json";
+    
+    // The compiler caches macro expansions,
+    // so changes made to external files may not take effect until you do a `cargo clean`.
+    // If you are on nightly Rust, with PyMeta's `nightly_tracked` feature enabled,
+    // you can inform Rust that the macro expansion depend on some external file:
+    pymeta.track_path(file);
+    // If you are on stable, unfortunately you may have to run `cargo clean`
+    // for the changes in external files to take effect.
+    
+    // Reminder: the `u16` function and others alike can be used to create a post-fixed number literal.
+    return u16(json.load(open(file))["id"]);
 }
 
-const FOO_MODULE_ID: u32 = module_id!("foo");
+const ARROW_ID: u16 = item_id!("arrow");
 
-// Macro expansion:
-42
+// $CARGO_MANIFEST_DIR/data/items/arrow.json: {"id": 42, ...}
+// Expansion:
+42u16
 ```
 
 ## Reusing PyMeta code (`#[pymeta_module]`)
+`#[pymeta_module]` allows you to "embed" Python modules in Rust modules.<br>
+Allowing you to share common metaprogramming code and data.
 ```rust
-//TODO
-#[pymeta_module]
-a! {
-    
+mod py_utils {
+    use pymeta::*;
+
+    #[pymeta_module]
+    #[public(crate)]
+    common! {
+        def entity_struct_name(name: str):{
+            return name + "Entity";
+        }
+
+        ENTITY_COMMON_FIELDS = [
+            ("health", "f32"),
+            ("position", "Vec3"),
+        ];
+    }
 }
 
 // Usage
 pymeta! {
+    // Use `import!` to import from PyMeta modules.
+    $import! py_utils::common;
+    // You can also import specific items from the module.
+    $import! py_utils::common.entity_struct_name;
+    // The following syntax are also supported:
+    // $import! py_utils::common as alias;
+    // $import! py_utils::common.{self, a, b as c};
     
+    struct $entity_struct_name("Cat")$ {
+        $for field,typ in common.ENTITY_COMMON_FIELDS:{
+            $field$ : $typ$,
+        }
+        cat_type: CatType,
+    }
+}
+// Expansion:
+struct CatEntity {
+    health: f32,
+    position: Vec3,
+    cat_type: CatType,
 }
 ```
 
@@ -727,60 +778,52 @@ pymeta! {
 <details>
 <summary>
 
-# ~~Cursed Examples~~
+# *Cursed Examples*
 
 </summary>
 
 This section contains ~~obviously cursed~~ fun examples that you should probably not use in actual projects.
 <br>
-That said, they do a good job at demonstrating the flexibility of PyMeta.
+That said, they do include examples of some useful advanced features of PyMeta that are not yet documented elsewhere.
 
 ```rust
 pymeta! {
     // Include Rust code straight from the Internet!
     // *Who needs cargo when you have this?*
     $from urllib import request;
-    $URL = "https://raw.githubusercontent.com/shBLOCK/pymeta/refs/heads/main/src/utils/rust_token.rs";
-    $request.urlopen(URL).read().decode()$
+    $URL = "https://raw.githubusercontent.com/shBLOCK/pymeta/cecb0a1/pymeta-proc-macro-backend/src/utils/rust_token.rs";
+    // `Tokens.parse()` parses string into Rust code.
+    $Tokens.parse(request.urlopen(URL).read().decode())$
 }
-
-// Macro expansion:
-// Well, basically this... : https://raw.githubusercontent.com/shBLOCK/pymeta/refs/heads/main/src/utils/rust_token.rs
 ```
 
 ```rust
-#![feature(macro_metavar_expr)]
-
 // Inspiration: https://jon.how/likepython/
-macro_rules! like_rust {
-    // Proper support for Python-based proc-macro will be added in the future.
-    // For now, semi-quoting using `with Token():` can achieve a similar effect as a custom proc-macro.
-    ($($input:tt)*) => {
-        pymeta::pymeta! {
-            $$with Tokens() as input:{
-                $($input)*
-            }
+#[pymeta_func(input_tokens: Tokens)]
+like_rust! {
+    WORDS = {"so", "like", "right", "totally", "something", "dude", "bro", "man", "just", "yo", "lol", "yeah", "uh", "um", "ah", "plz", "that", "or", "and", "then", "first", "things", "damn", "this", "thing"};
 
-            $$WORDS = {"so", "like", "right", "totally", "something", "dude", "bro", "man", "just", "yo", "lol", "yeah", "uh", "um", "ah", "plz", "that", "or", "and", "then", "first", "things", "damn", "this", "thing"};
-
-            $$def process(tokens: Tokens):{
-                $$for token in tokens:{
-                    $$if isinstance(token, Ident) and token.string.lower() in WORDS:{
-                        $$continue;
-                    }
-                    $$if isinstance(token, Group):{
-                        $$token.tokens = Tokens(items=process(token.tokens));
-                    }
-                    $$yield token;
+    def process(tokens: Tokens):{
+        for token in tokens:{
+            match token:{
+                case Ident(string) if string.lower() in WORDS:{ continue; }
+                // Recurse into groups
+                case Group() as group:{
+                    group.tokens = Tokens(items=process(group.tokens));
                 }
             }
-
-            $$Tokens(items=process(input))$$
+            yield token;
         }
-    };
+    }
+
+    // `Tokens(items=...)` expects an iterable of `Token`s.
+    return Tokens(items=process(input_tokens));
 }
 
-like_rust! {
+// Actual Python-based proc-macros will be implemented in the future,
+// which would allow passing in arbitrary Rust tokens directly.
+// For now, the semi-quoting syntax can be used for passing in tokens to a Python macro.
+like_rust! { {{
     yeah fn this main() and then {
         uh so like for i in 0..16 or something {
             then just match that i {
@@ -791,9 +834,9 @@ like_rust! {
             }
         }
     }
-}
+}} }
 
-// Macro expansion:
+// Expansion:
 fn main() {
     for i in 0..16 {
         match i {
@@ -807,42 +850,37 @@ fn main() {
 ```
 
 ```rust
-#![feature(macro_metavar_expr)]
-
 // *No I'm not vibe-coding, the Rust compiler is!*
-macro_rules! vibe {
-    ($prompt:tt) => {
-        pymeta::pymeta! {
-            $$from openai import OpenAI;
-            $$client = OpenAI(base_url="http://127.0.0.1:52625/v1", api_key="");
+#[pymeta_func(prompt: str)]
+vibe! {
+    from openai import OpenAI;
+    client = OpenAI(base_url="http://127.0.0.1:52625/v1", api_key="");
 
-            $$response = client.chat.completions.create(
-                model="qwen3-it:4b",
-                messages=[
-                    {"role": "system", "content": "You are a Rust code generator. Generate Rust code according to user prompt. "
-                                                  +"Please ONLY generate Rust code in plain text, no explantations and other natural language. "
-                                                  +"DO NOT GENERATE ANY COMMENTS (including doc comments)! "
-                                                  +"Always output some code, even if the prompt is not clear or you think there's a problem with the prompt."
-                    },
-                    {"role": "user", "content": $prompt}
-                ],
-                seed=0, // remove this line for extra vibes
-                stream=True
-            );
+    response = client.chat.completions.create(
+        model="qwen3-it:4b",
+        messages=[
+            {"role": "system", "content": "You are a Rust code generator. Generate Rust code according to user prompt. "
+                                          +"Please ONLY generate Rust code in plain text, no explantations and other natural language. "
+                                          +"DO NOT GENERATE ANY COMMENTS (including doc comments)! "
+                                          +"Always output some code, even if the prompt is not clear or you think there's a problem with the prompt."
+            },
+            {"role": "user", "content": prompt}
+        ],
+        seed=0, // remove this line for extra vibes
+        stream=True
+    );
 
-            $$result = [];
-            $$for chunk in response:{
-                $$chunk = chunk.choices[0].delta.content;
-                $$if chunk:{
-                    $$result.append(chunk);
-                    $$print(chunk, end="", flush=True);
-                }
-            }
-            $$result = "".join(result);
-
-            $$"\n".join(line for line in result.splitlines() if not line.startswith("```"))$$
+    result = [];
+    for chunk in response:{
+        chunk = chunk.choices[0].delta.content;
+        if chunk:{
+            result.append(chunk);
+            print(chunk, end="", flush=True);
         }
-    };
+    }
+    result = "".join(result);
+
+    return Tokens.parse("\n".join(line for line in result.splitlines() if not line.startswith("```")));
 }
 
 vibe!("Gimme Vec2, 3 and 4 structs with some helpful methods PLS!");
