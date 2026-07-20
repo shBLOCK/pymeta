@@ -232,7 +232,7 @@ pub fn pymeta_module(params: TokenStream, input: TokenStream) -> TokenStream {
     {
         // source doc
         let source = strip_common_indent(&body_group.inner().stream().source_text());
-        let source_doc = Literal::raw_string(
+        let source_doc = Literal::string(
             format!("\n\n[pymeta_module][::pymeta::pymeta_module] `{name}`\n---\n```\n{source}\n```").as_str(),
         );
         reexport_attrs.push(quote! { doc = #source_doc });
@@ -276,7 +276,7 @@ pub fn pymeta_func(params: TokenStream, input: TokenStream) -> TokenStream {
         // source doc
         let source = strip_common_indent(&body_group.inner().stream().source_text());
         let params_src = params.clone().source_text();
-        let source_doc = Literal::raw_string(
+        let source_doc = Literal::string(
             format!("\n\n[pymeta_func][::pymeta::pymeta_func] `{name}({params_src})`\n---\n```\n{source}\n```")
                 .as_str(),
         );
