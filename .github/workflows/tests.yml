@@ -15,9 +15,15 @@ jobs:
           - toolchain: nightly
             features: '--features "dump_source_on_error"'
             coverage: true
+            msrv: false
           - toolchain: stable
             features: '--features "dump_source_on_error"'
             coverage: false
+            msrv: false
+          - toolchain: stable
+            features: ''
+            coverage: false
+            msrv: true
     steps:
       - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@master
@@ -30,7 +36,10 @@ jobs:
       - name: Install cargo-llvm-cov
         if: ${{ matrix.coverage }}
         uses: taiki-e/install-action@cargo-llvm-cov
-      - name: Run tests ${{ matrix.coverage && 'with llvm-cov' || '' }}
+      - name: Install cargo-msrv
+        if: ${{ matrix.msrv }}
+        uses: cargo install cargo-msrv
+      - name: Run tests${{ matrix.coverage && ' with llvm-cov' || '' }}${{ matrix.msrv && ' with cargo-msrv' || '' }}
         run: |
           source ./tests/cpython_env/.venv/bin/activate
           export LD_LIBRARY_PATH="$(python -c 'import sysconfig; print(sysconfig.get_config_var("LIBDIR"))'):$LD_LIBRARY_PATH"
@@ -38,6 +47,7 @@ jobs:
           
           cargo \
           ${{ matrix.coverage && 'llvm-cov --lcov --output-path lcov.info' || ''}} \
+          ${{ matrix.msrv && 'msrv verify -- cargo' || '' }} \
           test --package pymeta-proc-macro-backend \
           ${{ matrix.features }} \
           --tests -- --test-threads=1
