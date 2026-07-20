@@ -1,5 +1,6 @@
 use super::py_source::builder::PySourceBuilder;
 use super::py_source::{PySource, PySrcSegment};
+use crate::abort;
 use crate::rust_to_py::code_region::{
     CodeRegion, IdentWithPyExpr, PyExpr, PySegment, PyStmt, PyStmtWithIndentBlock, RustCode, RustCodeWithBlock,
 };
@@ -114,8 +115,24 @@ impl PyCodeGen<'_> {
         PyCodeGen { py: PySourceBuilder::new(), ctx }
     }
 
-    fn rust_literal_repr_to_python_code(repr: String) -> String {
-        repr // FIXME: always produce valid Python syntax, or report error
+    fn rust_literal_repr_to_python_code(repr: String, span: Rc<CSpan>) -> String {
+        match LiteralRepr::parse(&repr) {
+            LiteralRepr::Str(StrLiteralRepr { kind, repr }) => match kind {
+                StrLiteralKind::Str => unescape_rust_str_literal(repr).as_ref().new_py_literal_repr(),
+                StrLiteralKind::Char => unescape_rust_char_literal(repr).new_py_literal_repr(),
+            },
+            LiteralRepr::Bytes(BytesLiteralRepr { kind, repr }) => match kind {
+                BytesLiteralKind::Bytes => unescape_rust_bytes_literal(repr).as_ref().new_py_literal_repr(),
+                BytesLiteralKind::Byte => unescape_rust_byte_literal(repr).new_py_literal_repr(),
+                BytesLiteralKind::CStr => unescape_rust_c_str_literal(repr).as_ref().new_py_literal_repr(),
+            },
+            LiteralRepr::Num(NumLiteralRepr { num, suffix, .. }) => {
+                if suffix.is_some() {
+                    abort!(span, "Suffixed number literal not supported in PyMeta Python source.")
+                }
+                num.replace('_', "")
+            }
+        }
     }
 
     /// Turn Rust tokens into Python code, assuming that they represent valid Python code.
@@ -194,7 +211,7 @@ impl PyCodeGen<'_> {
             {
                 self.py.append(prefix);
                 self.py.append(PySrcSegment::new(
-                    Self::rust_literal_repr_to_python_code(repr),
+                    Self::rust_literal_repr_to_python_code(repr, string.span()),
                     string.span(),
                 ));
                 segments.seek(3).unwrap();
@@ -212,7 +229,7 @@ impl PyCodeGen<'_> {
                 }
                 PT(Token::Literal(literal)) => {
                     self.py.append(PySrcSegment::new(
-                        Self::rust_literal_repr_to_python_code(literal.inner().to_string()),
+                        Self::rust_literal_repr_to_python_code(literal.inner().to_string(), literal.span()),
                         literal.span(),
                     ));
                 }
