@@ -35,8 +35,8 @@ linux_force_load_python_lib = ["dep:libc"]
 [dev-dependencies]
 proc-macro2 = { workspace = true }
 quote = { workspace = true }
-syn = { version = "2.0.119", features = ["full"] }
-prettyplease = "0.2.37"
+syn = { version = "3.0.2", features = ["full"] }
+prettyplease = "0.3.0"
 pretty_assertions = "1.4.1"
 
 [lints]

@@ -35,8 +35,8 @@ resolver = "3"
 pymeta-proc-macro = { path = "pymeta-proc-macro" }
 
 [workspace.dependencies]
-proc-macro2 = { version = "1.0.106", default-features = false, features = ["span-locations"] }
-quote = { version = "1.0.46", default-features = false }
+proc-macro2 = { version = "1.0.107", default-features = false, features = ["span-locations"] }
+quote = { version = "1.0.47", default-features = false }
 
 [features]
 default = ["linux_force_load_python_lib"]
