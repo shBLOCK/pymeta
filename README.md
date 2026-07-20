@@ -111,6 +111,7 @@ Currently there's one [RustRover bug](https://youtrack.jetbrains.com/projects/RU
 (details explained in examples below), but hopefully it gets fixed soon.<br>
 If your IDE is having trouble with PyMeta macros, feel free to report them to this repo.
 
+-----
 > [!NOTE]
 > Some of the following examples assume the understanding of some Rust proc-macro concepts.<br>
 > Most notably, if you are not familiar with the concept of Rust code "Token"s,
