@@ -113,3 +113,130 @@ fn func_sorted_array() {
         }
     }
 }
+
+#[test]
+fn tokens_parse() {
+    test_proc_macro_impl! {
+        pymeta {
+            $Tokens.parse(r#"
+                fn main() {
+                    println!("Hello, {}, {}, {}, {}", 1, 1.0, 'a', b'a');
+                }
+            "#)$
+        } => {
+            fn main() {
+                println!("Hello, {}, {}, {}, {}", 1, 1.0, 'a', b'a');
+            }
+        }
+    }
+}
+
+#[test]
+fn pymeta_module() {
+    test_proc_macro_impl! {
+        pymeta_module() {
+            common! {
+                def entity_struct_name(name: str):{
+                    return name + "Entity";
+                }
+
+                ENTITY_COMMON_FIELDS = [
+                    ("health", "f32"),
+                    ("position", "Vec3"),
+                ];
+            }
+        } => {
+            ::pymeta::__make_module_macro! {
+                $common __pymeta_module_common pub (self),
+                [] [doc = "TEST_IGNORE"],
+                r#"TEST_IGNORE"# {
+                    def entity_struct_name(name: str):{
+                        return name + "Entity";
+                    }
+                    ENTITY_COMMON_FIELDS = [
+                        ("health", "f32"),
+                        ("position", "Vec3"),
+                    ];
+                },
+            }
+        }
+    }
+}
+
+#[test]
+fn import_meta() {
+    test_proc_macro_impl! {
+        pymeta {
+            $import! foo::bar1;
+            $import! foo::bar2 as baz;
+            $import! foo::bar3.abc;
+            $import! foo::bar4.abc as bcd;
+            $import! foo::bar5.{self, a, b as c};
+            $import! foo::bar6.*;
+
+            $print("Hello world");
+        } => {
+            foo::bar6! { {foo::bar6}
+                foo::bar5! { {foo::bar5}
+                    foo::bar4! { {foo::bar4}
+                        foo::bar3! { {foo::bar3}
+                            foo::bar2! { {foo::bar2}
+                                foo::bar1! { {foo::bar1}
+                                    ::pymeta::__internal::_pymeta_main! {
+                                        main {
+                                            $import! foo::bar1;
+                                            $import! foo::bar2 as baz;
+                                            $import! foo::bar3.abc;
+                                            $import! foo::bar4.abc as bcd;
+                                            $import! foo::bar5.{self, a, b as c};
+                                            $import! foo::bar6.*;
+                                            $print("Hello world");
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn pymeta_main_with_module() {
+    test_proc_macro_impl! {
+        _pymeta_main {
+            main {
+                $import! py_utils::common;
+                $import! py_utils::common.entity_struct_name;
+                struct $entity_struct_name("Cat")$ {
+                    $for field,typ in common.ENTITY_COMMON_FIELDS:{
+                        $field$ : $typ$,
+                    }
+                    cat_type: CatType,
+                }
+            }
+            module common r#"TEST_IGNORE"# {py_utils::common} {
+                def entity_struct_name(name: str):{
+                    return name + "Entity";
+                }
+
+                ENTITY_COMMON_FIELDS = [
+                    ("health", "f32"),
+                    ("position", "Vec3"),
+                ];
+
+                {{
+                    __PYM__ foo = 1;
+                }};
+            }
+        } => {
+            struct CatEntity {
+                health: f32,
+                position: Vec3,
+                cat_type: CatType,
+            }
+        }
+    }
+}
