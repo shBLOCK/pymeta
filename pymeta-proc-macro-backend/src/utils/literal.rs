@@ -47,12 +47,10 @@ impl_from_repr_subtype!(Num, NumLiteralRepr);
 impl LiteralRepr<'_> {
     pub fn parse(repr: &str) -> LiteralRepr<'_> {
         match repr.as_bytes() {
-            [b'"', ..] | [b'r', b'"', ..] => StrLiteralRepr { kind: StrLiteralKind::Str, repr }.into(),
+            [b'"', ..] | [b'r', ..] => StrLiteralRepr { kind: StrLiteralKind::Str, repr }.into(),
             [b'\'', ..] => StrLiteralRepr { kind: StrLiteralKind::Char, repr }.into(),
-            [b'b', b'"', ..] | [b'b', b'r', b'"', ..] => {
-                BytesLiteralRepr { kind: BytesLiteralKind::Bytes, repr }.into()
-            }
             [b'b', b'\'', ..] => BytesLiteralRepr { kind: BytesLiteralKind::Byte, repr }.into(),
+            [b'b', ..] => BytesLiteralRepr { kind: BytesLiteralKind::Bytes, repr }.into(),
             [b'c', ..] => BytesLiteralRepr { kind: BytesLiteralKind::CStr, repr }.into(),
             repr @ [b'0'..=b'9', ..] => {
                 let is_float = match repr {
