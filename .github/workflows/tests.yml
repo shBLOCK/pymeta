@@ -38,7 +38,7 @@ jobs:
         uses: taiki-e/install-action@cargo-llvm-cov
       - name: Install cargo-msrv
         if: ${{ matrix.msrv }}
-        uses: cargo install cargo-msrv
+        run: cargo install cargo-msrv
       - name: Run tests${{ matrix.coverage && ' with llvm-cov' || '' }}${{ matrix.msrv && ' with cargo-msrv' || '' }}
         run: |
           source ./tests/cpython_env/.venv/bin/activate
