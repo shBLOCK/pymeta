@@ -76,7 +76,7 @@ pub(crate) mod stmt {
                         let mut is_first = true;
                         while !group_tokens.exhausted() {
                             if !is_first {
-                                if !tokens.read_one().eq_punct(',') {
+                                if !group_tokens.read_one().eq_punct(',') {
                                     abort!(group_tokens.get_current_span_for_diagnostics(), "Expected `,`")
                                 }
                             }
