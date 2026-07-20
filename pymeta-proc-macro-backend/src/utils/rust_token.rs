@@ -65,6 +65,7 @@ impl From<proc_macro2::Group> for Group {
     }
 }
 
+#[cfg_attr(coverage_nightly, coverage(off))]
 impl Debug for Group {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Group")
@@ -77,6 +78,7 @@ impl Debug for Group {
 
 macro_rules! impl_token_struct_common {
     ($struct_name:ident, $inner_name:ident) => {
+        #[cfg_attr(coverage_nightly, coverage(off))]
         impl $struct_name {
             pub fn span(&self) -> Rc<CSpan> {
                 Rc::clone(
@@ -111,6 +113,7 @@ impl_token_struct_common!(Group, group);
 
 macro_rules! delegate_token_struct_common {
     ($struct_name:ident, $inner_name:ident) => {
+        #[cfg_attr(coverage_nightly, coverage(off))]
         impl Debug for $struct_name {
             fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
                 self.$inner_name.fmt(f)
@@ -144,6 +147,7 @@ pub(crate) enum Token {
 }
 
 #[allow(unused)]
+#[cfg_attr(coverage_nightly, coverage(off))]
 impl Token {
     pub fn span(&self) -> Rc<CSpan> {
         match self {
@@ -178,6 +182,7 @@ impl Token {
 
 macro_rules! token_struct_common {
     ($name:ident, $fn_name:ident) => {
+        #[cfg_attr(coverage_nightly, coverage(off))]
         impl Token {
             #[allow(unused)]
             pub fn $fn_name(&self) -> Result<Rc<$name>, &Token> {
@@ -189,6 +194,7 @@ macro_rules! token_struct_common {
         }
 
         #[allow(unused)]
+        #[cfg_attr(coverage_nightly, coverage(off))]
         impl From<Rc<$name>> for Token {
             fn from(it: Rc<$name>) -> Self {
                 Self::$name(it)
@@ -196,6 +202,7 @@ macro_rules! token_struct_common {
         }
 
         #[allow(unused)]
+        #[cfg_attr(coverage_nightly, coverage(off))]
         impl From<&$name> for TokenTree {
             fn from(it: &$name) -> Self {
                 it.inner().clone().into()
@@ -220,6 +227,7 @@ impl From<TokenTree> for Token {
     }
 }
 
+#[cfg_attr(coverage_nightly, coverage(off))]
 impl From<&Token> for TokenTree {
     fn from(value: &Token) -> Self {
         match value {
@@ -231,6 +239,7 @@ impl From<&Token> for TokenTree {
     }
 }
 
+#[cfg_attr(coverage_nightly, coverage(off))]
 impl Debug for Token {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
@@ -353,6 +362,7 @@ impl TokenOptionEx for Option<&Token> {
         self.expect_group_by(|it| it == delimiter)
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn maybe_unwrap_none_group(&self) -> Option<Token> {
         if let Some(Token::Group(group)) = self
             && group.delimiter() == Delimiter::None
@@ -374,6 +384,7 @@ pub(crate) trait PunctEx {
 }
 
 impl PunctEx for Punct {
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn as_str(&self) -> &'static str {
         match self.inner().as_char() {
             '!' => "!",
@@ -409,6 +420,7 @@ pub(crate) trait DelimiterEx {
     fn left_right_str(self) -> Option<&'static str>;
 }
 
+#[cfg_attr(coverage_nightly, coverage(off))]
 impl DelimiterEx for Delimiter {
     fn left_str(self) -> Option<&'static str> {
         match self {

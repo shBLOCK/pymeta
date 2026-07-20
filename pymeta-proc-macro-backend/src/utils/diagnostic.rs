@@ -21,6 +21,7 @@ pub enum DiagnosticLevel {
     Help,
 }
 
+#[cfg_attr(coverage_nightly, coverage(off))]
 impl Display for DiagnosticLevel {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         f.write_str(match self {
@@ -47,6 +48,7 @@ impl From<DiagnosticLevel> for proc_macro::Level {
 macro_rules! diagnostic_add_child_methods {
     ($method_name:ident, $enum_name:ident) => {
         #[allow(unused)]
+        #[cfg_attr(coverage_nightly, coverage(off))]
         pub fn $method_name(self, spans: impl MultiSpan, message: impl Into<String>) -> Self {
             self.add_child(spans, DiagnosticLevel::$enum_name, message)
         }

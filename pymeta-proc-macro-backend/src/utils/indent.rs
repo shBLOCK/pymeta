@@ -7,6 +7,7 @@ pub struct IndentedLine<'a> {
 }
 
 impl<'a> From<&'a str> for IndentedLine<'a> {
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn from(mut text: &'a str) -> Self {
         let mut indent: usize = 0;
         while !text.is_empty() {

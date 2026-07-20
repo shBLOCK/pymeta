@@ -6,6 +6,7 @@ pub(crate) trait SpanOptionEx {
     fn join_or_fallback(self, other: Self) -> Span;
 }
 
+#[cfg_attr(coverage_nightly, coverage(off))]
 impl SpanOptionEx for Option<Span> {
     fn join_or_fallback(self, other: Self) -> Span {
         match (self, other) {
@@ -46,6 +47,7 @@ impl SpanEx for Span {
     }
 }
 
+//TODO: consider removing `CSpan`, or make it useful
 /// Caching wrapper around [Span].
 ///
 /// [Span] operations can be expansive, see: <https://github.com/rust-lang/rust/issues/149331#issuecomment-3580649306>
@@ -55,6 +57,7 @@ pub(crate) struct CSpan {
     end: OnceCell<LineColumn>,
 }
 #[allow(unused)]
+#[cfg_attr(coverage_nightly, coverage(off))]
 impl CSpan {
     pub fn inner(&self) -> Span {
         self.span
@@ -86,12 +89,14 @@ impl From<Span> for CSpan {
     }
 }
 
+#[cfg_attr(coverage_nightly, coverage(off))]
 impl Debug for CSpan {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(f, "C{:?}", self.span)
     }
 }
 
+#[cfg_attr(coverage_nightly, coverage(off))]
 impl From<&CSpan> for Span {
     fn from(value: &CSpan) -> Self {
         value.span
