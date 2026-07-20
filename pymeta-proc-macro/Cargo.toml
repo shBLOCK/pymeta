@@ -13,7 +13,7 @@ include = ["/src"]
 proc-macro = true
 
 [dependencies]
-pymeta-proc-macro-backend = { path = "../pymeta-proc-macro-backend", features = ["proc_macro"] }
+pymeta-proc-macro-backend = { workspace = true, features = ["proc_macro"] }
 
 [features]
 nightly_diagnostic = ["pymeta-proc-macro-backend/nightly_diagnostic"]

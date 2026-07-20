@@ -34,9 +34,12 @@ members = [
 resolver = "3"
 
 [dependencies]
-pymeta-proc-macro = { path = "pymeta-proc-macro" }
+pymeta-proc-macro = { workspace = true }
 
 [workspace.dependencies]
+pymeta-proc-macro = { path = "pymeta-proc-macro", version = "1.0.0" }
+pymeta-proc-macro-backend = { path = "pymeta-proc-macro-backend", version = "1.0.0" }
+
 proc-macro2 = { version = "1.0.107", default-features = false, features = ["span-locations"] }
 quote = { version = "1.0.47", default-features = false }
 
