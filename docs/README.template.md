@@ -67,7 +67,14 @@ You can set the env var `PYO3_PYTHON=<path to Python executable>` to use a custo
 For more information, see [PyO3's documentation on configuring the Python version](https://pyo3.rs/latest/building-and-distribution.html#configuring-the-python-version).
 ## Usage
 Most features of PyMeta are documented with examples and the code comments in the examples.<br>
-Please read through the examples and their comments to learn to use PyMeta.
+Please read through the examples and their comments to learn to use PyMeta.<br>
+It is recommended to read through the examples in sequence.
+## IDE
+PyMeta has been thoroughly tested in the [RustRover](https://www.jetbrains.com/rust/) IDE.
+Other IDEs would probably work, but I have not thoroughly tested them with PyMeta.<br>
+Currently there's one [RustRover bug](https://youtrack.jetbrains.com/projects/RUST/issues/RUST-20689/Unexpected-merging-of-spanned-identifiers-in-output-of-proc-macro) affecting some advanced features of PyMeta
+(details explained in examples below), but hopefully it gets fixed soon.<br>
+If your IDE is having trouble with PyMeta macros, feel free to report them to this repo.
 
 <details open>
 <summary>
@@ -165,8 +172,6 @@ pymeta! {
 
 </details>
 
-> [!WARNING]
-> The following examples may be outdated. They are being reworked.
 
 <details open>
 <summary>
@@ -184,54 +189,97 @@ let GOLDEN_RATIO = pymeta!($f32((1 + 5 ** 0.5) / 2)$);
 1.618034f32
 ```
 ```rust
-INCLUDE!("BACKEND_TEST/include/sin_table.input.rs")
+pymeta! {
+    INCLUDE!("BACKEND_TEST/include/sin_table.input.rs")
+}
 // or with numpy:
-INCLUDE!("BACKEND_TEST/include/sin_table_np.input.rs")
+pymeta! {
+    INCLUDE!("BACKEND_TEST/include/sin_table_np.input.rs")
+}
 
 // Expansion:
 const SIN_TABLE: [f32; 256] = [0.0, 0.024541228522912288, /*...*/ -0.04906767432741809, -0.024541228522912448];
 ```
 
-## Defining simple PyMeta macros (`#[pymeta_func]`)
-```rust
-//TODO
-#[pymeta_func()]
-a! {
-    
-}
-```
-
 ## Semi-quoting
 ```rust
-//TODO
 pymeta! {
-    // The `Tokens` class can be used for semi-quoting.
-    // (A dedicated semi-quoting expression syntax may be added in the future.)
-    $with Tokens() as signiture:{ fn say_hello(name: &str) }
-    
-    trait Hello {
-        $signiture$;
+    INCLUDE!("BACKEND_TEST/include/semi_quoting_intro.input.rs")
+}
+
+// Expansion:
+INCLUDE!("BACKEND_TEST/include/semi_quoting_intro.output.rs")
+```
+
+## Pure-Python code blocks
+When writing many Python statements in PyMeta, adding the `$` symbols on every line could become annoying.<br>
+The `${...}` syntax could be used to create a "pure-Python" block:
+```rust
+pymeta! {
+    ${ // Pure-Python block
+        // Semicolon and braces are still required.
+        import numpy;
+        N = 10;
+        for i in range(N):{
+            ...
+        }
     }
     
-    struct MyStruct;
-    impl Hello for MyStruct {
-        $signiture$ {
-            println!("Hello {name}!");
+    // You can also make a Python indent block be a pure-Python block (note the `:${` part):
+    $while True:${
+        x = foo(y + z);
+        if a == b:{
+            break;
         }
     }
 }
+```
 
-// Macro expansion:
-trait Hello {
-    fn say_hello(name: &str);
+## Defining simple PyMeta macros (`#[pymeta_func]`)
+`#[pymeta_func]` literally defines a Python function "as" a Rust macro.<br>
+You can invoke such a Rust macro like calling the Python function.<br>
+The function's return value will becomes the expansion result of the Rust macro.
+```rust
+// A simple example.
+#[pymeta_func(a: int, b: int, c: int)] // This is the function parameter list (types are not necessary).
+#[public(crate)] // This specifies the visibility (like `pub(crate)` in Rust), you can also specify other visibilities such as `#[public(super)]`.
+fma! { // `fma` is the name of the function and the Rust macro.
+    // The function body is a pure-Python block, so no `$`s are needed.
+    return a * b + c;
 }
-struct MyStruct;
-impl Hello for MyStruct {
-    fn say_hello(name: &str) {
-        println!("Hello {name}!");
-    }
+// Usage:
+fn main() {
+    let num = fma!(2, 3, 4); // Expansion: 10 (2*3+4)
+    println!("2*3+4={num}");
 }
 ```
+```rust
+// A more complex example.
+/// Creates a sorted array of (key, value) pairs at compile time.
+/// Optionally sort by the `key` function.
+/// This is useful for creating an id registry-table that can be bisected.
+#[pymeta_func(INCLUDE!("BACKEND_TEST/include/func_sorted_array.param.rs"))]
+INCLUDE!("BACKEND_TEST/include/func_sorted_array.input.rs")
+// Usage:
+sorted_array!("ENTITY_REGISTRY", {{ (u16, &'static dyn GameEntityType) }}, {
+    2: "SheepEntityType",
+    1: "PigEntityType",
+    1000: "PlayerEntityType",
+    100: {{ ZombieEntityType::new(ZombieType::Zombie) }},
+    101: {{ ZombieEntityType::new(ZombieType::Husk) }},
+});
+// Expansion:
+const ENTITY_REGISTRY: [(u16, &'static dyn GameEntityType); 5] = [
+    (1, PigEntityType),
+    (2, SheepEntityType),
+    (100, ZombieEntityType::new(ZombieType::Zombie)),
+    (101, ZombieEntityType::new(ZombieType::Husk)),
+    (1000, PlayerEntityType),
+];
+```
+Note to RustRover users: due to an IDE [bug](https://youtrack.jetbrains.com/projects/RUST/issues/RUST-20689/Unexpected-merging-of-spanned-identifiers-in-output-of-proc-macro),
+the IDE may fail to expand a `pymeta_func` "invoke" if it contains `$` symbols.
+A workaround for now is to put spaces around the `$` symbols.
 
 ## Using data from external files
 ```rust

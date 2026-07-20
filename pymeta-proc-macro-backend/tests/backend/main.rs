@@ -8,7 +8,14 @@ fn tokens_eq(a: TokenStream, b: TokenStream) -> bool {
         match (a, b) {
             (Ident(a), Ident(b)) => a == b,
             (Punct(a), Punct(b)) => a.as_char() == b.as_char() && a.spacing() == b.spacing(),
-            (Literal(a), Literal(b)) => a.to_string() == b.to_string(),
+            (Literal(a), Literal(b)) => {
+                let (a_repr, b_repr) = (a.to_string(), b.to_string());
+                if a_repr.contains("TEST_IGNORE") || b_repr.contains("TEST_IGNORE") {
+                    true
+                } else {
+                    a_repr == b_repr
+                }
+            }
             (Group(a), Group(b)) => a.delimiter() == b.delimiter() && tokens_eq(a.stream(), b.stream()),
             _ => false,
         }
@@ -36,9 +43,11 @@ fn tokens_to_code(tokens: TokenStream) -> String {
 }
 
 #[allow(unused)]
-macro_rules! ignore {
-    ($($_:tt)*) => {};
+macro_rules! macro_ignore {
+    ({$($keep:tt)*} $($_:tt)*) => {$($keep)*};
 }
+#[allow(unused)]
+pub(crate) use macro_ignore;
 
 macro_rules! quote_or_include_tokens {
     { include!($file:expr) } => {
@@ -64,10 +73,10 @@ macro_rules! test_proc_macro_impl {
         let input = $crate::quote_or_include_tokens! { $($input)* };
         let expected_output = $crate::quote_or_include_tokens! { $($output)* };
         let result = ::pymeta_proc_macro_backend::run_proc_macro(|| {
-            ::pymeta_proc_macro_backend::$macro_name(input $(, param ignore!($($param)*))?)
+            ::pymeta_proc_macro_backend::$macro_name($($crate::macro_ignore!({param} $($param)*),)? input )
         });
 
-        ::pyo3::Python::attach(|py| {
+        ::pyo3::Python::try_attach(|py| {
             // Hacky workaround to prevent "PySpan is unsendable, but is being dropped on another thread" errors in tests
             let _ = py.run(c"import gc\ngc.collect()", None, None).map_err(|e| eprintln!("gc.collect() failed: {e:?}"));
         });

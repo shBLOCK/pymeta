@@ -82,8 +82,6 @@ def resolve_includes(
 
         # Preserve anything after INCLUDE!() on the same line
         suffix = line[match.end():]
-        output_lines.append(included_text)
-        if suffix:
-            output_lines.append(suffix)
+        output_lines.append(included_text + suffix)
 
     output_file.write_text("\n".join(output_lines))
