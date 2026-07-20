@@ -138,6 +138,8 @@ pub(crate) mod stmt {
                     pcg.py.append(("from", meta_stmt.ident.span()));
                     pcg.py.append(" ");
                     pcg.py.append(Self::PATH);
+                    pcg.py.append(".");
+                    pcg.py.append(module_name);
                     pcg.py.append(" ");
                     pcg.py.append(("import", meta_stmt.ident.span()));
                     pcg.py.append(" ");
