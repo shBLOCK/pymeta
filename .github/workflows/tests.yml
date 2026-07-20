@@ -12,18 +12,15 @@ jobs:
     strategy:
       matrix:
         include:
-          - toolchain: nightly
+          - mode: 'coverage'
+            toolchain: nightly
             features: '--features "dump_source_on_error"'
-            coverage: true
-            msrv: false
-          - toolchain: stable
+          - mode: '~'
+            toolchain: stable
             features: '--features "dump_source_on_error"'
-            coverage: false
-            msrv: false
-          - toolchain: stable
+          - mode: 'msrv'
+            toolchain: stable
             features: ''
-            coverage: false
-            msrv: true
     steps:
       - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@master
@@ -33,26 +30,26 @@ jobs:
       - name: Init CPython venv
         working-directory: tests/cpython_env
         run: uv sync
-      - name: Install cargo-llvm-cov
-        if: ${{ matrix.coverage }}
-        uses: taiki-e/install-action@cargo-llvm-cov
-      - name: Install cargo-msrv
-        if: ${{ matrix.msrv }}
-        run: cargo install cargo-msrv
-      - name: Run tests${{ matrix.coverage && ' with llvm-cov' || '' }}${{ matrix.msrv && ' with cargo-msrv' || '' }}
+      - name: Install cargo tools
+        uses: taiki-e/install-action@v2
+        with: 
+          tool: |
+            ${{ matrix.mode == 'coverage' && 'cargo-llvm-cov' || '' }}
+            ${{ matrix.mode == 'msrv' && 'cargo-msrv' || '' }}
+      - name: Run tests${{ matrix.mode == 'coverage' && ' with llvm-cov' || '' }}${{ matrix.mode == 'msrv' && ' with cargo-msrv' || '' }}
         run: |
           source ./tests/cpython_env/.venv/bin/activate
           export LD_LIBRARY_PATH="$(python -c 'import sysconfig; print(sysconfig.get_config_var("LIBDIR"))'):$LD_LIBRARY_PATH"
           echo "$LD_LIBRARY_PATH"
           
           cargo \
-          ${{ matrix.coverage && 'llvm-cov --lcov --output-path lcov.info' || ''}} \
-          ${{ matrix.msrv && 'msrv verify -- cargo' || '' }} \
+          ${{ matrix.mode == 'coverage' && 'llvm-cov --lcov --output-path lcov.info' || ''}} \
+          ${{ matrix.mode == 'msrv' && 'msrv verify -- cargo' || '' }} \
           test --package pymeta-proc-macro-backend \
           ${{ matrix.features }} \
           --tests -- --test-threads=1
       - name: Upload to Codecov
-        if: ${{ matrix.coverage }}
+        if: ${{ matrix.mode == 'coverage' }}
         uses: codecov/codecov-action@v7
         with: 
           files: lcov.info
