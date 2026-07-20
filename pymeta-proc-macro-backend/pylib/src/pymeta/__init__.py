@@ -811,3 +811,16 @@ def emit(*args: CoerceToTokens, span: Span | None = None) -> None | Group:
     if len(tokens) > 0 and isinstance(tokens[-1], Group):
         return tokens[-1]
     return None
+
+
+def getenv_tracked(key: str) -> str | None:
+    try:
+        return _native.tracked_env_var(key)
+    except KeyError:
+        return None
+
+
+import os
+def track_path(path: os.PathLike):
+    import pathlib
+    _native.tracked_path(pathlib.Path(path))
