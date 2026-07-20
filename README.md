@@ -7,9 +7,9 @@ PyMeta - Powerful Python-based metaprogramming for Rust
 [![coverage](https://img.shields.io/codecov/c/github/shBLOCK/pymeta?logo=codecov)](https://codecov.io/gh/shBLOCK/pymeta)
 
 Generate and transform Rust code by **running Python code at compile time**.<br>
-**Write Python code alongside normal Rust code** for seamless inline metaprogramming.<br>
+**Write Python code alongside normal Rust code** for natural inline metaprogramming.<br>
 Define intuitive **Python-based macros**.<br>
-Seamless **integration with tooling and IDEs**.
+**Integration with tooling and IDEs**.
 
 # Intro Example: Vector Structs
 ```rust
@@ -54,7 +54,7 @@ pymeta! {
 > ```
 ```rust
 fn main() {
-    // PyMeta keeps source-location information so Rust tooling and IDEs
+    // PyMeta preserves source-location information so Rust tooling and IDEs
     // know where generated code came from.
     // For example:
     
@@ -67,7 +67,8 @@ fn main() {
 
     // In most IDEs, you can "navigate into" (aka. ctrl-click) the `Vec3` below.
     // You should jump to the `Vec~$dims$` part above.
-    // Your IDE may also "gray-out" the `Vec~$dims$` part, because some struct generated from it are unused.
+    // Your IDE may also "gray-out" the `Vec~$dims$` part,
+    // because some struct generated from it are unused.
     let vec = Vec3 { x: 1.0, y: 2.0, z: 3.0 };
 }
 ```
@@ -84,7 +85,7 @@ fn main() {
 - Writing Python-based macros and proc-macros
     - Much more powerful than `macro_rules!`, much less boilerplate than Rust-based proc-macro
     - No need for a separate proc-macro crate
-- Reusing code: define "PyMeta modules" in normal Rust modules to reuse metaprogramming code and data
+- Reusing code: define "PyMeta Python modules" in normal Rust modules to reuse metaprogramming code and data
 
 # Getting Started
 ## Installation
@@ -102,13 +103,19 @@ For more information, see [PyO3's documentation on configuring the Python versio
 ## Usage
 Most features of PyMeta are documented with examples and the code comments in the examples.<br>
 Please read through the examples and their comments to learn to use PyMeta.<br>
-It is recommended to read through the examples in sequence.
+It is recommended to read through the examples in order.
 ## IDE
 PyMeta has been thoroughly tested in the [RustRover](https://www.jetbrains.com/rust/) IDE.
 Other IDEs would probably work, but I have not thoroughly tested them with PyMeta.<br>
 Currently there's one [RustRover bug](https://youtrack.jetbrains.com/projects/RUST/issues/RUST-20689/Unexpected-merging-of-spanned-identifiers-in-output-of-proc-macro) affecting some advanced features of PyMeta
 (details explained in examples below), but hopefully it gets fixed soon.<br>
 If your IDE is having trouble with PyMeta macros, feel free to report them to this repo.
+
+> [!NOTE]
+> Some of the following examples assume the understanding of some Rust proc-macro concepts.<br>
+> Most notably, if you are not familiar with the concept of Rust code "Token"s,
+> please refer to [Rust's TokenTree documentation](https://doc.rust-lang.org/proc_macro/enum.TokenTree.html)
+> in examples that involves `Tokens`, `Token`, `Punct`, etc.
 
 <details open>
 <summary>
@@ -444,11 +451,6 @@ pymeta! {
 > ```
 > </details>
 
-> [!NOTE]
-> The following examples assume that understanding of some Rust proc-macro concepts.<br>
-> Most notably, if you are not familiar with the concept of Rust code "Token"s,
-> please refer to [Rust's TokenTree documentation](https://doc.rust-lang.org/proc_macro/enum.TokenTree.html) while reading the following examples. 
-
 Then, let's add [swizzle](https://en.wikipedia.org/wiki/Swizzling_(computer_graphics)) operations to the vectors.
 Since this involves a LOT of functions to cover all possible arrangements,
 we will put them in traits to not pollute the namespace when swizzles are not needed.
@@ -770,6 +772,9 @@ struct CatEntity {
     cat_type: CatType,
 }
 ```
+Note to RustRover users: due to an IDE [bug](https://youtrack.jetbrains.com/projects/RUST/issues/RUST-20689/Unexpected-merging-of-spanned-identifiers-in-output-of-proc-macro),
+the IDE may fail to expand a `pymeta_func` "invoke" if it contains `$` symbols.
+A workaround for now is to put spaces around the `$` symbols.
 
 
 </details>
@@ -885,201 +890,6 @@ vibe! {
 
 vibe!("Gimme Vec2, 3 and 4 structs with some helpful methods PLS!");
 ```
-
-<details>
-<summary>Macro expansion</summary>
-
-```rust
-#[derive(Debug, Clone, Copy)]
-pub struct Vec2 {
-    pub x: f64,
-    pub y: f64,
-}
-impl Vec2 {
-    pub fn new(x: f64, y: f64) -> Self {
-        Self { x, y }
-    }
-    pub fn zero() -> Self {
-        Self { x: 0.0, y: 0.0 }
-    }
-    pub fn length_squared(&self) -> f64 {
-        self.x * self.x + self.y * self.y
-    }
-    pub fn length(&self) -> f64 {
-        self.length_squared().sqrt()
-    }
-    pub fn normalize(&self) -> Self {
-        let len = self.length();
-        if len == 0.0 {
-            Self::zero()
-        } else {
-            Self {
-                x: self.x / len,
-                y: self.y / len,
-            }
-        }
-    }
-    pub fn dot(&self, other: &Self) -> f64 {
-        self.x * other.x + self.y * other.y
-    }
-    pub fn add(&self, other: &Self) -> Self {
-        Self {
-            x: self.x + other.x,
-            y: self.y + other.y,
-        }
-    }
-    pub fn subtract(&self, other: &Self) -> Self {
-        Self {
-            x: self.x - other.x,
-            y: self.y - other.y,
-        }
-    }
-    pub fn multiply_scalar(&self, scalar: f64) -> Self {
-        Self {
-            x: self.x * scalar,
-            y: self.y * scalar,
-        }
-    }
-    pub fn magnitude(&self) -> f64 {
-        self.length()
-    }
-    pub fn distance_to(&self, other: &Self) -> f64 {
-        self.subtract(other).length()
-    }
-}
-#[derive(Debug, Clone, Copy)]
-pub struct Vec3 {
-    pub x: f64,
-    pub y: f64,
-    pub z: f64,
-}
-impl Vec3 {
-    pub fn new(x: f64, y: f64, z: f64) -> Self {
-        Self { x, y, z }
-    }
-    pub fn zero() -> Self {
-        Self { x: 0.0, y: 0.0, z: 0.0 }
-    }
-    pub fn length_squared(&self) -> f64 {
-        self.x * self.x + self.y * self.y + self.z * self.z
-    }
-    pub fn length(&self) -> f64 {
-        self.length_squared().sqrt()
-    }
-    pub fn normalize(&self) -> Self {
-        let len = self.length();
-        if len == 0.0 {
-            Self::zero()
-        } else {
-            Self {
-                x: self.x / len,
-                y: self.y / len,
-                z: self.z / len,
-            }
-        }
-    }
-    pub fn dot(&self, other: &Self) -> f64 {
-        self.x * other.x + self.y * other.y + self.z * other.z
-    }
-    pub fn add(&self, other: &Self) -> Self {
-        Self {
-            x: self.x + other.x,
-            y: self.y + other.y,
-            z: self.z + other.z,
-        }
-    }
-    pub fn subtract(&self, other: &Self) -> Self {
-        Self {
-            x: self.x - other.x,
-            y: self.y - other.y,
-            z: self.z - other.z,
-        }
-    }
-    pub fn multiply_scalar(&self, scalar: f64) -> Self {
-        Self {
-            x: self.x * scalar,
-            y: self.y * scalar,
-            z: self.z * scalar,
-        }
-    }
-    pub fn magnitude(&self) -> f64 {
-        self.length()
-    }
-    pub fn distance_to(&self, other: &Self) -> f64 {
-        self.subtract(other).length()
-    }
-}
-#[derive(Debug, Clone, Copy)]
-pub struct Vec4 {
-    pub x: f64,
-    pub y: f64,
-    pub z: f64,
-    pub w: f64,
-}
-impl Vec4 {
-    pub fn new(x: f64, y: f64, z: f64, w: f64) -> Self {
-        Self { x, y, z, w }
-    }
-    pub fn zero() -> Self {
-        Self { x: 0.0, y: 0.0, z: 0.0, w: 0.0 }
-    }
-    pub fn length_squared(&self) -> f64 {
-        self.x * self.x + self.y * self.y + self.z * self.z + self.w * self.w
-    }
-    pub fn length(&self) -> f64 {
-        self.length_squared().sqrt()
-    }
-    pub fn normalize(&self) -> Self {
-        let len = self.length();
-        if len == 0.0 {
-            Self::zero()
-        } else {
-            Self {
-                x: self.x / len,
-                y: self.y / len,
-                z: self.z / len,
-                w: self.w / len,
-            }
-        }
-    }
-    pub fn dot(&self, other: &Self) -> f64 {
-        self.x * other.x + self.y * other.y + self.z * other.z + self.w * other.w
-    }
-    pub fn add(&self, other: &Self) -> Self {
-        Self {
-            x: self.x + other.x,
-            y: self.y + other.y,
-            z: self.z + other.z,
-            w: self.w + other.w,
-        }
-    }
-    pub fn subtract(&self, other: &Self) -> Self {
-        Self {
-            x: self.x - other.x,
-            y: self.y - other.y,
-            z: self.z - other.z,
-            w: self.w - other.w,
-        }
-    }
-    pub fn multiply_scalar(&self, scalar: f64) -> Self {
-        Self {
-            x: self.x * scalar,
-            y: self.y * scalar,
-            z: self.z * scalar,
-            w: self.w * scalar,
-        }
-    }
-    pub fn magnitude(&self) -> f64 {
-        self.length()
-    }
-    pub fn distance_to(&self, other: &Self) -> f64 {
-        self.subtract(other).length()
-    }
-}
-```
-
-</details>
-
 </details>
 
 <details open>
