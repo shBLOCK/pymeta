@@ -541,6 +541,7 @@ class IntLiteral(Literal[int]):
 
     def __init__(self, value: SupportsInt, type: Type | str | None = None, span: Span | None = None):
         super().__init__(span)
+        self.repr = None
         self.value = int(value)
         if isinstance(type, str):
             type = IntLiteral.Type(type)
@@ -623,6 +624,7 @@ class FloatLiteral(Literal[float]):
 
     def __init__(self, value: SupportsFloat, type: Type | str | None = None, span: Span | None = None):
         super().__init__(span)
+        self.repr = None
         self.value = float(value)
         if isinstance(type, str):
             type = FloatLiteral.Type(type)
@@ -659,6 +661,7 @@ class StrLiteral(Literal[str]):
 
     def __init__(self, value: str, type: str = STR, span: Span | None = None):
         super().__init__(span)
+        self.repr = None
         if type not in (StrLiteral.STR, StrLiteral.CHR):
             raise ValueError(f"invalid {self.__class__.__name__} type \"{type}\"")
         if type == StrLiteral.CHR and len(value) != 1:
@@ -692,6 +695,7 @@ class BytesLiteral(Literal[bytes]):
 
     def __init__(self, value: SupportsBytes, type: str = BYTES, span: Span | None = None):
         super().__init__(span)
+        self.repr = None
         value = bytes(value)
         if type not in (BytesLiteral.BYTE, BytesLiteral.BYTES, BytesLiteral.CSTR):
             raise ValueError(f"invalid {self.__class__.__name__} type \"{type}\"")
