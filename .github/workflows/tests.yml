@@ -36,6 +36,7 @@ jobs:
           tool: |
             ${{ matrix.mode == 'coverage' && 'cargo-llvm-cov' || '' }}
             ${{ matrix.mode == 'msrv' && 'cargo-msrv' || '' }}
+      
       - name: Run tests${{ matrix.mode == 'coverage' && ' with llvm-cov' || '' }}${{ matrix.mode == 'msrv' && ' with cargo-msrv' || '' }}
         run: |
           source ./tests/cpython_env/.venv/bin/activate
@@ -48,6 +49,7 @@ jobs:
           test --package pymeta-proc-macro-backend \
           ${{ matrix.features }} \
           --tests -- --test-threads=1
+      
       - name: Upload to Codecov
         if: ${{ matrix.mode == 'coverage' }}
         uses: codecov/codecov-action@v7
