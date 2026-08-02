@@ -1,3 +1,4 @@
+#![no_std]
 #![doc = include_str!("../README.md")]
 
 pub use pymeta_proc_macro::{pymeta, pymeta_func, pymeta_module};
