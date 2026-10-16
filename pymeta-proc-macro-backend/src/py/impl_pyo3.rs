@@ -232,7 +232,7 @@ pub(crate) fn execute(exe: PyMetaExecutable) -> PyMetaExecutionResult {
                         .unwrap()
                         .extract::<Option<usize>>()
                         .unwrap()
-                        .map(|c| c - 1),
+                        .map(|c| c.saturating_sub(1)),
                     syntax_error
                         .getattr("end_lineno")
                         .unwrap()
@@ -243,7 +243,7 @@ pub(crate) fn execute(exe: PyMetaExecutable) -> PyMetaExecutionResult {
                         .unwrap()
                         .extract::<Option<usize>>()
                         .unwrap()
-                        .map(|c| c - 2),
+                        .map(|c| c.saturating_sub(2)),
                 )))
             } else {
                 None
