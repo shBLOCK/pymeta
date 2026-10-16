@@ -4,6 +4,22 @@ use proc_macro2::{Delimiter, Spacing, TokenStream, TokenTree};
 use quote::TokenStreamExt;
 use std::rc::Rc;
 
+pub(super) trait GroupEx {
+    fn unpack_double_group(&self) -> Option<(Rc<Group>, Rc<Group>)>;
+}
+
+impl GroupEx for Rc<Group> {
+    fn unpack_double_group(&self) -> Option<(Rc<Group>, Rc<Group>)> {
+        if let [Token::Group(inner)] = self.tokens().slice(..)
+            && inner.delimiter() == self.delimiter()
+        {
+            Some((self.clone(), inner.clone()))
+        } else {
+            None
+        }
+    }
+}
+
 pub(super) trait TokenBufferEx {
     fn is_py_marker_escape(&self) -> bool;
     fn skip_py_marker_escape(&mut self);
@@ -65,15 +81,12 @@ impl TokenBufferEx for TokenBuffer {
 
     fn read_double_group(&mut self, delimiter: Delimiter) -> Option<(Rc<Group>, Rc<Group>)> {
         let outer = self.current().expect_group(delimiter).ok()?;
-        let outer_tokens = outer.tokens();
-        let [Token::Group(inner)] = outer_tokens.slice(..) else {
-            return None;
-        };
-        if inner.delimiter() != delimiter {
-            return None;
+        if let Some(result) = outer.unpack_double_group() {
+            self.seek(1).unwrap();
+            Some(result)
+        } else {
+            None
         }
-        self.seek(1).unwrap();
-        Some((outer, inner.clone()))
     }
 }
 

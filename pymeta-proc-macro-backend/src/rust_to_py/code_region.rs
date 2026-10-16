@@ -146,7 +146,7 @@ pub(crate) mod parser {
     use crate::rust_to_py::CONCAT_MARKER;
     use crate::rust_to_py::meta::expr::MetaExpr;
     use crate::rust_to_py::meta::stmt::{ImportMetaStmt, MetaStmt, MetaStmtBody};
-    use crate::rust_to_py::utils::TokenBufferEx;
+    use crate::rust_to_py::utils::{GroupEx, TokenBufferEx};
     use crate::utils::match_unwrap;
     use crate::utils::parsing::RustSimplePath;
     use crate::utils::rust_token::{Token, TokenBuffer, TokenOptionEx};
@@ -245,6 +245,7 @@ pub(crate) mod parser {
             // pure Python block
             if !self.settings.pure_python_mode
                 && let Ok(group) = tokens.current().expect_group(Delimiter::Brace)
+                && group.unpack_double_group().is_none()
             {
                 tokens.seek(1);
                 let content = Self::new_derived(self, |s| s.pure_python_mode = true).parse(group.tokens());
