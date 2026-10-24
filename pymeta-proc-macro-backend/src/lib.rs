@@ -12,7 +12,7 @@ use crate::rust_to_py::py_code_gen::{PyCodeGen, PyCodeGenContext, PyMetaExecutab
 use crate::rust_to_py::utils::py_markers_to_py_marker_idents;
 use crate::utils::indent::{IndentedLine, IndentedLineIterExt};
 use crate::utils::parsing::{RustAttribute, RustSimpleMacroCall, RustSimplePath, RustVis};
-use crate::utils::rust_token::TokenOptionEx;
+use crate::utils::rust_token::{Token, TokenOptionEx};
 use crate::utils::{LiteralRawStringExt, TokenStreamExt as _};
 use proc_macro2::{Delimiter, Group, Ident, Literal, Span, TokenStream, TokenTree};
 use quote::quote;
@@ -255,9 +255,28 @@ pub fn pymeta_func(params: TokenStream, input: TokenStream) -> TokenStream {
 
     let macro_call = RustSimpleMacroCall::try_parse(&mut input).unwrap_or_else(|e| e.abort());
 
+    let mut init_blocks = vec![];
+
     // attributes
     let VisAndSeparatedAttrs { vis, macro_attrs, mut reexport_attrs } =
-        VisAndSeparatedAttrs::from_macro_call_attrs(macro_call.attributes.iter());
+        VisAndSeparatedAttrs::from_macro_call_attrs(macro_call.attributes.iter().filter(|attr| {
+            match attr.path.to_string().as_str() {
+                "init" => {
+                    match attr.group.tokens().slice(..) {
+                        [Token::Ident(_), Token::Group(param)]
+                            if param.delimiter() == Delimiter::Parenthesis
+                                && let [Token::Group(block)] = param.tokens().slice(..)
+                                && block.delimiter() == Delimiter::Brace =>
+                        {
+                            init_blocks.push(block.clone());
+                        }
+                        _ => abort!(attr.group.span(), "Invalid init block"),
+                    }
+                    false
+                }
+                _ => true,
+            }
+        }));
 
     // names
     let name_ident = macro_call.ident;
@@ -293,6 +312,7 @@ pub fn pymeta_func(params: TokenStream, input: TokenStream) -> TokenStream {
         ::pymeta::__make_func_macro! {
             $ #py_marker_ident #name_ident #mangled_name_ident #vis,
             [#(#macro_attrs),*] [#(#reexport_attrs),*],
+            [ #(#init_blocks)* ],
             ( #param_list ) { #func_body },
         }
     };

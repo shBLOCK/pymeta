@@ -86,6 +86,7 @@ fn func_fma() {
             ::pymeta::__make_func_macro! {
                 $__PYM__ fma __pymeta_module_fma pub (crate),
                 [] [doc = "TEST_IGNORE"],
+                [],
                 (a : int, b : int, c : int) { return a * b + c; },
             }
         }
@@ -101,6 +102,7 @@ fn func_sorted_array() {
             ::pymeta::__make_func_macro! {
                 $__PYM__ sorted_array __pymeta_module_sorted_array pub (self),
                 [] [doc = "TEST_IGNORE"],
+                [],
                 (name: str, typ: Tokens, items_dict: dict, key=None) {
                     key = key or (lambda x: x);
                     items = sorted(items_dict.items(), key = lambda kv : key(kv[0]));
@@ -236,6 +238,27 @@ fn pymeta_main_with_module() {
                 health: f32,
                 position: Vec3,
                 cat_type: CatType,
+            }
+        }
+    }
+}
+
+#[test]
+fn func_init() {
+    test_proc_macro_impl! {
+        pymeta_func() {
+            #[init({
+                FOO = "foo";
+            })]
+            bar! {
+                return baz();
+            }
+        } => {
+            ::pymeta::__make_func_macro! {
+                $__PYM__ bar __pymeta_module_bar pub (self),
+                [] [doc = "TEST_IGNORE"],
+                [{ FOO = "foo"; }],
+                () { return baz(); },
             }
         }
     }

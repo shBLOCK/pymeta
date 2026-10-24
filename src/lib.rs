@@ -41,6 +41,7 @@ pub mod __internal {
         {
             $d:tt $py:ident $name:ident $mangled_name:ident $vis:vis,
             [$($macro_attrs:meta),*] [$($reexport_attrs:meta),*],
+            [ $({ $($init_block:tt)* })* ],
             ( $($param_list:tt)* ) { $($func_body:tt)* },
             $($extra:tt)*
         } => {
@@ -49,15 +50,19 @@ pub mod __internal {
             macro_rules! $mangled_name {
                 ($d($d params:tt)*) => {
                     ::pymeta::__internal::_pymeta_main! {
-                        main {
-                            $py with Tokens._none_ctx():{
-                                $py def $name($($param_list)*):$py{
+                        main {$py{
+                            with Tokens._none_ctx():{
+                                $(
+                                    $($init_block)*
+                                    pass;
+                                )*
+                                def $name($($param_list)*):{
                                     $($func_body)*
                                 }
-                                $py result = $name($d($d params)*);
+                                result = $name($d($d params)*);
                             }
-                            $py emit(result);
-                        }
+                            emit(result);
+                        }}
                         $($extra)*
                     }
                 };
