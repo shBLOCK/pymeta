@@ -701,7 +701,9 @@ mod pymeta_native {
             }
             _ => {
                 let _ = path;
-                Err(PyRuntimeError::new_err("PyMeta: the `nightly_tracked` feature has to be enabled to use this function"))
+                Err(PyRuntimeError::new_err(
+                    "PyMeta: the `nightly_tracked` feature has to be enabled to use this function",
+                ))
             }
         }
     }
@@ -714,16 +716,19 @@ mod pymeta_native {
                 cfg_select! {
                     feature = "proc_macro" => proc_macro::tracked::env_var(key),
                     _ => std::env::var(key),
-                }.map_err(|e| {
-                    match e {
-                        VarError::NotPresent => PyKeyError::new_err(String::from(key)),
-                        VarError::NotUnicode(_) => PyValueError::new_err(format!("the value of env var `{key}` is not valid Unicode")),
+                }
+                .map_err(|e| match e {
+                    VarError::NotPresent => PyKeyError::new_err(String::from(key)),
+                    VarError::NotUnicode(_) => {
+                        PyValueError::new_err(format!("the value of env var `{key}` is not valid Unicode"))
                     }
                 })
             }
             _ => {
                 let _ = key;
-                Err(PyRuntimeError::new_err("PyMeta: the `nightly_tracked` feature has to be enabled to use this function"))
+                Err(PyRuntimeError::new_err(
+                    "PyMeta: the `nightly_tracked` feature has to be enabled to use this function",
+                ))
             }
         }
     }
